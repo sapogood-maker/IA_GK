@@ -1,16 +1,96 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from app.db.base import get_db
-from app.schemas.schemas import VideoCreate, VideoResponse, VideoUpdate
-from app.repositories.repositories import VideoRepository, TrainingSessionRepository
+from app.core.r2 import get_r2_service, R2Service
+from app.schemas.schemas import (
+    VideoCreate, VideoResponse, VideoUpdate,
+    VideoUploadResponse, VideoStatusResponse,
+    ProcessingJobStatusResponse
+)
+from app.repositories.repositories import VideoRepository, TrainingSessionRepository, ProcessingJobRepository
+from app.services.video_upload_service import VideoUploadService
 
 router = APIRouter(prefix="/api/v1/videos", tags=["videos"])
 
 
+@router.post("/upload", response_model=VideoUploadResponse, status_code=status.HTTP_201_CREATED)
+async def upload_video(
+    training_session_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    r2_service: R2Service = Depends(get_r2_service)
+):
+    """
+    Upload a video file to R2.
+    
+    Accepts multipart file upload with validation for:
+    - File extensions: mp4, mov, avi, mkv
+    - MIME type: video/*
+    - Maximum file size (configurable via ENV)
+    
+    Returns:
+    - video_id: UUID of created video
+    - job_id: UUID of created processing job
+    - status: Upload status (UPLOADED)
+    - r2_key: Path in R2 bucket
+    - r2_url: Public URL to video
+    """
+    upload_service = VideoUploadService(db, r2_service)
+    result = await upload_service.upload_video(training_session_id, file)
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("error", "Unknown error")
+        )
+    
+    return VideoUploadResponse(
+        video_id=result["video_id"],
+        job_id=result["job_id"],
+        status=result["status"],
+        r2_key=result["r2_key"],
+        r2_url=result["r2_url"]
+    )
+
+
+@router.get("/{video_id}/status", response_model=VideoStatusResponse)
+async def get_video_status(
+    video_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    r2_service: R2Service = Depends(get_r2_service)
+):
+    """
+    Get video and processing job status.
+    
+    Returns:
+    - video_id: UUID of video
+    - video_status: Current upload/processing status
+    - job_status: Current processing job status
+    - progress: Processing progress (0-100)
+    - r2_url: Public URL to video
+    """
+    upload_service = VideoUploadService(db, r2_service)
+    result = await upload_service.get_video_status(video_id)
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=result.get("error", "Video not found")
+        )
+    
+    return VideoStatusResponse(
+        video_id=result["video_id"],
+        video_status=result["video_status"],
+        job_status=result["job_status"],
+        progress=result["progress"],
+        r2_url=result["r2_url"]
+    )
+
+
 @router.post("", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)
 async def create_video(video_data: VideoCreate, db: AsyncSession = Depends(get_db)):
-    """Create a new video."""
+    """Create a new video record (legacy endpoint)."""
     session_repo = TrainingSessionRepository(db)
     
     # Validate training session exists
@@ -22,9 +102,13 @@ async def create_video(video_data: VideoCreate, db: AsyncSession = Depends(get_d
     return await video_repo.create(
         training_session_id=video_data.training_session_id,
         filename=video_data.filename,
-        r2_key=video_data.r2_key,
+        original_filename=video_data.original_filename,
+        mime_type=video_data.mime_type,
+        file_size_bytes=video_data.file_size_bytes,
         duration_seconds=video_data.duration_seconds,
-        size_bytes=video_data.size_bytes,
+        r2_bucket=video_data.r2_bucket,
+        r2_key=video_data.r2_key,
+        r2_url=video_data.r2_url,
         upload_status=video_data.upload_status
     )
 
@@ -76,3 +160,4 @@ async def delete_video(video_id: UUID, db: AsyncSession = Depends(get_db)):
     success = await video_repo.delete(video_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+

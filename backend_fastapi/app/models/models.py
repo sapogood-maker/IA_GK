@@ -1,8 +1,26 @@
-from sqlalchemy import Column, String, DateTime, UUID, Integer, Float, ForeignKey
+from sqlalchemy import Column, String, DateTime, UUID, Integer, Float, ForeignKey, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from uuid import uuid4
+from enum import Enum
 from app.db.base import Base
+
+
+class UploadStatus(str, Enum):
+    """Video upload status enum."""
+    PENDING = "PENDING"
+    UPLOADED = "UPLOADED"
+    PROCESSING = "PROCESSING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
+class ProcessingJobStatus(str, Enum):
+    """Processing job status enum."""
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
 class User(Base):
@@ -89,10 +107,15 @@ class Video(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     training_session_id = Column(UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     filename = Column(String, nullable=False)
-    r2_key = Column(String, nullable=True)
+    original_filename = Column(String, nullable=True)
+    mime_type = Column(String, nullable=True)
+    file_size_bytes = Column(Integer, nullable=True)
     duration_seconds = Column(Float, nullable=True)
-    size_bytes = Column(Integer, nullable=True)
-    upload_status = Column(String, nullable=False, default="pending")
+    r2_bucket = Column(String, nullable=True)
+    r2_key = Column(String, nullable=True)
+    r2_url = Column(String, nullable=True)
+    upload_status = Column(SQLEnum(UploadStatus), nullable=False, default=UploadStatus.PENDING)
+    uploaded_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -106,8 +129,11 @@ class ProcessingJob(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
-    status = Column(String, nullable=False, default="pending")
+    job_type = Column(String, nullable=True)
+    worker_id = Column(String, nullable=True)
+    status = Column(SQLEnum(ProcessingJobStatus), nullable=False, default=ProcessingJobStatus.PENDING)
     progress = Column(Float, nullable=True, default=0.0)
+    retry_count = Column(Integer, nullable=False, default=0)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     error_message = Column(String, nullable=True)

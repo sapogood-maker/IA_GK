@@ -153,13 +153,29 @@ class VideoRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, training_session_id: UUID, filename: str, r2_key: str | None = None, duration_seconds: float | None = None, size_bytes: int | None = None, upload_status: str = "pending") -> Video:
+    async def create(
+        self,
+        training_session_id: UUID,
+        filename: str,
+        original_filename: str | None = None,
+        mime_type: str | None = None,
+        file_size_bytes: int | None = None,
+        duration_seconds: float | None = None,
+        r2_bucket: str | None = None,
+        r2_key: str | None = None,
+        r2_url: str | None = None,
+        upload_status: str = "PENDING"
+    ) -> Video:
         video = Video(
             training_session_id=training_session_id,
             filename=filename,
-            r2_key=r2_key,
+            original_filename=original_filename,
+            mime_type=mime_type,
+            file_size_bytes=file_size_bytes,
             duration_seconds=duration_seconds,
-            size_bytes=size_bytes,
+            r2_bucket=r2_bucket,
+            r2_key=r2_key,
+            r2_url=r2_url,
             upload_status=upload_status
         )
         self.db.add(video)
@@ -203,11 +219,23 @@ class ProcessingJobRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, video_id: UUID, status: str = "pending", progress: float = 0.0, error_message: str | None = None) -> ProcessingJob:
+    async def create(
+        self,
+        video_id: UUID,
+        job_type: str | None = None,
+        worker_id: str | None = None,
+        status: str = "PENDING",
+        progress: float = 0.0,
+        retry_count: int = 0,
+        error_message: str | None = None
+    ) -> ProcessingJob:
         job = ProcessingJob(
             video_id=video_id,
+            job_type=job_type,
+            worker_id=worker_id,
             status=status,
             progress=progress,
+            retry_count=retry_count,
             error_message=error_message
         )
         self.db.add(job)

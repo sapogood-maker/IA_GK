@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from app.db.base import get_db
-from app.schemas.schemas import ProcessingJobCreate, ProcessingJobResponse, ProcessingJobUpdate
+from app.schemas.schemas import (
+    ProcessingJobCreate, ProcessingJobResponse, ProcessingJobUpdate,
+    ProcessingJobStatusResponse
+)
 from app.repositories.repositories import ProcessingJobRepository, VideoRepository
 
 router = APIRouter(prefix="/api/v1/processing-jobs", tags=["processing-jobs"])
@@ -21,8 +24,11 @@ async def create_processing_job(job_data: ProcessingJobCreate, db: AsyncSession 
     job_repo = ProcessingJobRepository(db)
     return await job_repo.create(
         video_id=job_data.video_id,
+        job_type=job_data.job_type,
+        worker_id=job_data.worker_id,
         status=job_data.status,
         progress=job_data.progress,
+        retry_count=job_data.retry_count,
         error_message=job_data.error_message
     )
 
@@ -42,6 +48,25 @@ async def list_processing_jobs(
         return await job_repo.get_by_status(status)
     else:
         return await job_repo.get_all()
+
+
+@router.get("/{job_id}/status", response_model=ProcessingJobStatusResponse)
+async def get_processing_job_status(job_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Get detailed processing job status."""
+    job_repo = ProcessingJobRepository(db)
+    job = await job_repo.get_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Processing job not found")
+    
+    return ProcessingJobStatusResponse(
+        job_id=job.id,
+        video_id=job.video_id,
+        status=job.status,
+        progress=job.progress,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+        error_message=job.error_message
+    )
 
 
 @router.get("/{job_id}", response_model=ProcessingJobResponse)
@@ -77,3 +102,4 @@ async def delete_processing_job(job_id: UUID, db: AsyncSession = Depends(get_db)
     success = await job_repo.delete(job_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Processing job not found")
+
