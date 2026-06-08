@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import auth, users, clubs, coaches, goalkeepers
+from app.api.v1 import auth, users, clubs, coaches, goalkeepers, training_sessions, videos, processing_jobs
 from app.db.base import engine, Base
 
 app = FastAPI(
@@ -22,6 +22,9 @@ app.include_router(users.router)
 app.include_router(clubs.router)
 app.include_router(coaches.router)
 app.include_router(goalkeepers.router)
+app.include_router(training_sessions.router)
+app.include_router(videos.router)
+app.include_router(processing_jobs.router)
 
 
 @app.on_event("startup")
