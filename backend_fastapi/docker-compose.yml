@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: goalkeeper_ai_db
+    environment:
+      POSTGRES_USER: goalkeeper_user
+      POSTGRES_PASSWORD: goalkeeper_pass
+      POSTGRES_DB: goalkeeper_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U goalkeeper_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: .
+    container_name: goalkeeper_ai_backend
+    environment:
+      DATABASE_URL: postgresql://goalkeeper_user:goalkeeper_pass@postgres:5432/goalkeeper_ai
+      JWT_SECRET_KEY: dev-secret-key-change-in-production
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRATION_MINUTES: 30
+      REFRESH_TOKEN_EXPIRATION_DAYS: 7
+      ENV: development
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+  # AI Worker service - RESERVED for Sprint 2 (port 8002)
+  # will be added in Sprint 2 with GPU support
+
+volumes:
+  postgres_data:
