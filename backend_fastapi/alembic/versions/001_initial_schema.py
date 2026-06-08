@@ -46,8 +46,8 @@ def upgrade() -> None:
         sa.Column("club_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ),
-        sa.ForeignKeyConstraint(["club_id"], ["clubs.id"], ),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["club_id"], ["clubs.id"], ondelete="SET NULL"),
     )
     op.create_index(op.f("ix_coaches_user_id"), "coaches", ["user_id"], unique=False)
     op.create_index(op.f("ix_coaches_club_id"), "coaches", ["club_id"], unique=False)
@@ -59,11 +59,11 @@ def upgrade() -> None:
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("birth_date", sa.DateTime(timezone=True), nullable=True),
         sa.Column("dominant_hand", sa.String(), nullable=True),
-        sa.Column("height_cm", sa.String(), nullable=True),
-        sa.Column("weight_kg", sa.String(), nullable=True),
+        sa.Column("height_cm", sa.Integer(), nullable=True),
+        sa.Column("weight_kg", sa.Float(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["club_id"], ["clubs.id"], ),
+        sa.ForeignKeyConstraint(["club_id"], ["clubs.id"], ondelete="CASCADE"),
     )
     op.create_index(op.f("ix_goalkeepers_club_id"), "goalkeepers", ["club_id"], unique=False)
 

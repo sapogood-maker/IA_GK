@@ -220,7 +220,7 @@ CREATE TABLE goalkeepers (
 cd backend_fastapi
 cp .env.example .env
 docker compose up
-# API at http://localhost:8000
+# API at http://localhost:8001
 ```
 
 ### Option B: Local Setup
@@ -231,8 +231,8 @@ source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your PostgreSQL connection
-uvicorn app.main:app --reload --port 8000
-# API at http://localhost:8000
+uvicorn app.main:app --reload --port 8001
+# API at http://localhost:8001
 ```
 
 ### Test the API

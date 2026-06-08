@@ -84,8 +84,8 @@ backend_fastapi/
 - name (String)
 - birth_date (DateTime, optional)
 - dominant_hand (String, optional)
-- height_cm (String, optional)
-- weight_kg (String, optional)
+- height_cm (Integer, optional)
+- weight_kg (Float, optional)
 - created_at (DateTime)
 
 ## Quick Start
@@ -236,7 +236,7 @@ See `.env.example` for all available options:
 
 PostgreSQL is required. By default with docker-compose:
 - Host: `postgres` (inside container) or `localhost` (from host)
-- Port: `5432`
+- Port: `5433` (mapped from container port 5432)
 - User: `goalkeeper_user`
 - Password: `goalkeeper_pass`
 - Database: `goalkeeper_ai`
