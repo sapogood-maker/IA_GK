@@ -45,24 +45,29 @@ class VideoUploadService:
         
         return True, None
     
-    def _generate_r2_key(self, training_session_id: UUID, original_filename: str) -> str:
+    async def _generate_r2_key(self, training_session_id: UUID, original_filename: str) -> str:
         """
         Generate R2 storage key based on structure: videos/goalkeeper_id/year/month/filename
+        
+        Retrieves the actual goalkeeper_id from the training session.
         """
         timestamp = datetime.utcnow()
         year = timestamp.year
         month = f"{timestamp.month:02d}"
         
-        # Get goalkeeper_id from training session
-        # For now, use a placeholder - in real implementation, would fetch from session
-        gk_id = training_session_id.hex[:8]
+        # Load training session from database to get actual goalkeeper_id
+        session = await self.session_repo.get_by_id(training_session_id)
+        if not session:
+            raise ValueError(f"Training session {training_session_id} not found")
+        
+        goalkeeper_id = str(session.goalkeeper_id)
         
         # Generate unique filename
         file_ext = Path(original_filename).suffix.lower()
         base_name = Path(original_filename).stem
         unique_name = f"{base_name}_{timestamp.strftime('%Y%m%d_%H%M%S')}{file_ext}"
         
-        return f"videos/{gk_id}/{year}/{month}/{unique_name}"
+        return f"videos/{goalkeeper_id}/{year}/{month}/{unique_name}"
     
     async def upload_video(
         self,
@@ -106,7 +111,7 @@ class VideoUploadService:
                 }
             
             # Generate R2 key and upload
-            r2_key = self._generate_r2_key(training_session_id, file.filename)
+            r2_key = await self._generate_r2_key(training_session_id, file.filename)
             
             upload_success = await self.r2_service.upload_file(
                 temp_path,
