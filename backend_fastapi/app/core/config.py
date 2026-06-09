@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -24,9 +28,24 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+    
+    @field_validator('database_url')
+    @classmethod
+    def validate_database_url(cls, v):
+        if not v:
+            raise ValueError("DATABASE_URL is required")
+        return v
+    
+    @field_validator('jwt_secret_key')
+    @classmethod
+    def validate_jwt_secret(cls, v):
+        if not v:
+            raise ValueError("JWT_SECRET_KEY is required")
+        if len(v) < 32:
+            logger.warning("JWT_SECRET_KEY is shorter than recommended (32+ characters)")
+        return v
 
 
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
-
