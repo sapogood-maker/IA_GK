@@ -1,14 +1,58 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
-  runApp(const GkPerformanceApp());
+import 'providers/auth_provider.dart';
+import 'providers/dashboard_provider.dart';
+import 'repositories/auth_repository.dart';
+import 'repositories/dashboard_repository.dart';
+import 'services/api_client.dart';
+import 'services/session_service.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  final preferences = await SharedPreferences.getInstance();
+  final sessionService = SessionService(preferences);
+  final apiClient = ApiClient(sessionService);
+  final authRepository = AuthRepository(apiClient, sessionService);
+  final dashboardRepository = DashboardRepository(apiClient);
+  final authProvider = AuthProvider(authRepository, sessionService);
+
+  await authProvider.initialize();
+
+  runApp(
+    GkPerformanceApp(
+      authProvider: authProvider,
+      dashboardProvider: DashboardProvider(dashboardRepository),
+    ),
+  );
 }
 
-final _router = GoRouter(
+GoRouter _createRouter(AuthProvider authProvider) => GoRouter(
   initialLocation: '/painel',
-  redirect: (context, state) => state.uri.path == '/' ? '/painel' : null,
+  refreshListenable: authProvider,
+  redirect: (context, state) {
+    if (authProvider.isLoading) {
+      return null;
+    }
+
+    final path = state.uri.path;
+    final isLogin = path == '/login';
+
+    if (!authProvider.isAuthenticated) {
+      return isLogin ? null : '/login';
+    }
+
+    if (path == '/' || isLogin) {
+      return '/painel';
+    }
+
+    return null;
+  },
   routes: [
+    GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     ShellRoute(
       builder: (context, state, child) => PainelGoleirosPage(child: child),
       routes: [
@@ -75,51 +119,207 @@ const _itensMenu = [
 ];
 
 class GkPerformanceApp extends StatelessWidget {
-  const GkPerformanceApp({super.key});
+  const GkPerformanceApp({
+    super.key,
+    required this.authProvider,
+    required this.dashboardProvider,
+  });
+
+  final AuthProvider authProvider;
+  final DashboardProvider dashboardProvider;
 
   @override
   Widget build(BuildContext context) {
     const seed = Color(0xFF28C76F);
-    return MaterialApp.router(
-      title: 'GK Desempenho',
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: seed,
-          brightness: Brightness.dark,
-          surface: const Color(0xFF101512),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
+        ChangeNotifierProvider<DashboardProvider>.value(
+          value: dashboardProvider,
         ),
-        scaffoldBackgroundColor: const Color(0xFF070A08),
-        fontFamily: 'Roboto',
-        cardTheme: CardThemeData(
-          color: const Color(0xFF111A15),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: Color(0xFF26342B)),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF101812),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF29382F)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: Color(0xFF29382F)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: const BorderSide(color: seed, width: 1.4),
+      ],
+      child: Builder(
+        builder: (context) {
+          return MaterialApp.router(
+            title: 'GK Desempenho',
+            debugShowCheckedModeBanner: false,
+            themeMode: ThemeMode.dark,
+            theme: ThemeData(
+              useMaterial3: true,
+              brightness: Brightness.dark,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: seed,
+                brightness: Brightness.dark,
+                surface: const Color(0xFF101512),
+              ),
+              scaffoldBackgroundColor: const Color(0xFF070A08),
+              fontFamily: 'Roboto',
+              cardTheme: CardThemeData(
+                color: const Color(0xFF111A15),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(color: Color(0xFF26342B)),
+                ),
+              ),
+              inputDecorationTheme: InputDecorationTheme(
+                filled: true,
+                fillColor: const Color(0xFF101812),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF29382F)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF29382F)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: seed, width: 1.4),
+                ),
+              ),
+            ),
+            routerConfig: _createRouter(context.read<AuthProvider>()),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final success = await context.read<AuthProvider>().login(
+      email: _emailController.text.trim(),
+      password: _passwordController.text,
+    );
+
+    if (mounted && success) {
+      context.go('/painel');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final isLoading = auth.isLoading;
+
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const _Marca(),
+                      const SizedBox(height: 28),
+                      Text(
+                        'Entrar',
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0,
+                            ),
+                      ),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        controller: _emailController,
+                        enabled: !isLoading,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        decoration: const InputDecoration(
+                          labelText: 'E-mail',
+                          prefixIcon: Icon(Icons.mail_outline),
+                        ),
+                        validator: (value) {
+                          final email = value?.trim() ?? '';
+                          if (email.isEmpty) {
+                            return 'Informe seu e-mail.';
+                          }
+                          if (!email.contains('@')) {
+                            return 'Informe um e-mail válido.';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _passwordController,
+                        enabled: !isLoading,
+                        obscureText: true,
+                        autofillHints: const [AutofillHints.password],
+                        decoration: const InputDecoration(
+                          labelText: 'Senha',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        onFieldSubmitted: (_) => _submit(),
+                        validator: (value) {
+                          if ((value ?? '').isEmpty) {
+                            return 'Informe sua senha.';
+                          }
+                          return null;
+                        },
+                      ),
+                      if (auth.errorMessage != null) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          auth.errorMessage!,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: const Color(0xFFFFB4AB)),
+                        ),
+                      ],
+                      const SizedBox(height: 22),
+                      FilledButton.icon(
+                        onPressed: isLoading ? null : _submit,
+                        icon: isLoading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.login),
+                        label: const Text('Entrar'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
-      routerConfig: _router,
     );
   }
 }
@@ -191,8 +391,23 @@ class _PainelGoleirosPageState extends State<PainelGoleirosPage> {
   }
 }
 
-class PainelScreen extends StatelessWidget {
+class PainelScreen extends StatefulWidget {
   const PainelScreen({super.key});
+
+  @override
+  State<PainelScreen> createState() => _PainelScreenState();
+}
+
+class _PainelScreenState extends State<PainelScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<DashboardProvider>().load();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -357,30 +572,37 @@ class _ResumoExecutivo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const indicadores = [
+    final dashboard = context.watch<DashboardProvider>();
+    final data = dashboard.data;
+    final carregando = dashboard.isLoading && data == null;
+    final semDados = !carregando && (data == null || !data.hasAnyData);
+    final valorSemDados = semDados ? 'Sem dados disponíveis' : '0';
+    final indicadores = [
       _Indicador(
         'Vídeos Enviados',
-        '128',
-        '+18 esta semana',
+        carregando ? '...' : data?.totalVideos.toString() ?? valorSemDados,
+        semDados ? 'Endpoint sem dados' : 'Total retornado pela API',
         Icons.video_library_outlined,
       ),
       _Indicador(
         'Análises Concluídas',
-        '94',
-        '73% da fila processada',
+        carregando
+            ? '...'
+            : data?.totalAnalisesConcluidas.toString() ?? valorSemDados,
+        semDados ? 'Endpoint sem dados' : 'Jobs concluídos na API',
         Icons.check_circle_outline,
       ),
       _Indicador(
-        'GK Score Médio',
-        '82,4',
-        '+4,8 vs. mês anterior',
-        Icons.speed_outlined,
+        'Sessões de Treino',
+        carregando ? '...' : data?.totalSessoes.toString() ?? valorSemDados,
+        semDados ? 'Endpoint sem dados' : 'Sessões retornadas pela API',
+        Icons.event_note_outlined,
       ),
       _Indicador(
-        'Goleiros Ativos',
-        '36',
-        '12 clubes monitorados',
-        Icons.sports_handball_outlined,
+        'Clubes Ativos',
+        carregando ? '...' : data?.totalClubes.toString() ?? valorSemDados,
+        semDados ? 'Endpoint sem dados' : 'Clubes retornados pela API',
+        Icons.shield_outlined,
       ),
     ];
 
@@ -482,6 +704,8 @@ class _MenuLateral extends StatelessWidget {
                 ),
               ),
               const _StatusProcessamento(),
+              const SizedBox(height: 12),
+              const _SessaoUsuario(),
             ],
           ),
         ),
@@ -589,6 +813,14 @@ class _StatusProcessamento extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dashboard = context.watch<DashboardProvider>();
+    final totalEmProcessamento = dashboard.data?.totalEmProcessamento;
+    final texto = dashboard.isLoading && dashboard.data == null
+        ? 'Carregando fila da IA'
+        : totalEmProcessamento == null || totalEmProcessamento == 0
+        ? 'Sem dados disponíveis'
+        : '$totalEmProcessamento vídeos em processamento';
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -611,10 +843,16 @@ class _StatusProcessamento extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            const LinearProgressIndicator(value: 0.68),
+            LinearProgressIndicator(
+              value: totalEmProcessamento == null
+                  ? null
+                  : totalEmProcessamento > 0
+                  ? 0.68
+                  : 0,
+            ),
             const SizedBox(height: 8),
             Text(
-              '17 vídeos em processamento',
+              texto,
               style: Theme.of(
                 context,
               ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
@@ -622,6 +860,43 @@ class _StatusProcessamento extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SessaoUsuario extends StatelessWidget {
+  const _SessaoUsuario();
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final user = auth.user;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (user != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              user.email,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+            ),
+          ),
+        OutlinedButton.icon(
+          onPressed: () async {
+            await context.read<AuthProvider>().logout();
+            if (context.mounted) {
+              context.go('/login');
+            }
+          },
+          icon: const Icon(Icons.logout),
+          label: const Text('Sair'),
+        ),
+      ],
     );
   }
 }
@@ -665,10 +940,13 @@ class _CardIndicador extends StatelessWidget {
             const Spacer(),
             Text(
               indicador.valor,
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0,
-              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style:
+                  (indicador.valor.length > 8
+                          ? Theme.of(context).textTheme.titleMedium
+                          : Theme.of(context).textTheme.headlineMedium)
+                      ?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 0),
             ),
             const SizedBox(height: 4),
             Text(
@@ -697,36 +975,19 @@ class _SecaoAnalises extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const analises = [
-      _Analise(
-        'São Paulo FC Sub-20',
-        'Rafael Monteiro',
-        'Defesas em queda',
-        'Concluída',
-        0.92,
-      ),
-      _Analise(
-        'Palmeiras Base',
-        'Caio Nascimento',
-        'Saída do gol',
-        'Processando',
-        0.64,
-      ),
-      _Analise(
-        'Santos FC Feminino',
-        'Bruna Alves',
-        'Reposição curta',
-        'Revisão técnica',
-        0.81,
-      ),
-      _Analise(
-        'Grêmio Sub-17',
-        'Henrique Lima',
-        'Bolas aéreas',
-        'Aguardando IA',
-        0.28,
-      ),
-    ];
+    final dashboard = context.watch<DashboardProvider>();
+    final jobs = dashboard.data?.analises ?? const <Map<String, dynamic>>[];
+    final analises = jobs.take(4).map((job) {
+      final status = job['status']?.toString() ?? 'Sem status';
+      final progresso = (job['progress'] as num?)?.toDouble() ?? 0;
+      return _Analise(
+        'Vídeo ${job['video_id'] ?? 'sem identificação'}',
+        'Job ${job['id'] ?? job['job_id'] ?? ''}',
+        job['job_type']?.toString() ?? 'Análise de vídeo',
+        status,
+        (progresso / 100).clamp(0, 1).toDouble(),
+      );
+    }).toList();
 
     return _Bloco(
       titulo: 'Fila de análises',
@@ -735,14 +996,18 @@ class _SecaoAnalises extends StatelessWidget {
         icon: const Icon(Icons.filter_list),
         label: const Text('Filtrar'),
       ),
-      child: Column(
-        children: [
-          for (final analise in analises) ...[
-            _LinhaAnalise(analise: analise),
-            if (analise != analises.last) const Divider(height: 24),
-          ],
-        ],
-      ),
+      child: dashboard.isLoading && analises.isEmpty
+          ? const _MensagemSemDados(texto: 'Carregando dados da API')
+          : analises.isEmpty
+          ? const _MensagemSemDados()
+          : Column(
+              children: [
+                for (final analise in analises) ...[
+                  _LinhaAnalise(analise: analise),
+                  if (analise != analises.last) const Divider(height: 24),
+                ],
+              ],
+            ),
     );
   }
 }
@@ -809,30 +1074,6 @@ class _SecaoGoleiros extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const goleiros = [
-      _Goleiro(
-        'Rafael Monteiro',
-        'São Paulo FC Sub-20',
-        '88',
-        'Reflexo',
-        'Alta evolução',
-      ),
-      _Goleiro(
-        'Bruna Alves',
-        'Santos FC Feminino',
-        '85',
-        'Reposição',
-        'Pronta para jogo',
-      ),
-      _Goleiro(
-        'Caio Nascimento',
-        'Palmeiras Base',
-        '79',
-        'Cobertura',
-        'Atenção em cruzamentos',
-      ),
-    ];
-
     return _Bloco(
       titulo: 'Goleiros em destaque',
       acao: FilledButton.tonalIcon(
@@ -840,101 +1081,7 @@ class _SecaoGoleiros extends StatelessWidget {
         icon: const Icon(Icons.add),
         label: const Text('Novo Goleiro'),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final columns = constraints.maxWidth >= 820 ? 3 : 1;
-          return GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: goleiros.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: columns,
-              crossAxisSpacing: 14,
-              mainAxisSpacing: 14,
-              mainAxisExtent: 190,
-            ),
-            itemBuilder: (context, index) =>
-                _CardGoleiro(goleiro: goleiros[index]),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _CardGoleiro extends StatelessWidget {
-  const _CardGoleiro({required this.goleiro});
-
-  final _Goleiro goleiro;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: const Color(0xFF20452C),
-                  child: Text(
-                    goleiro.nome.characters.first,
-                    style: const TextStyle(
-                      color: Color(0xFFEAF7EF),
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                _Etiqueta(texto: 'GK ${goleiro.score}'),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              goleiro.nome,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              goleiro.clube,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
-            ),
-            const Spacer(),
-            Row(
-              children: [
-                const Icon(
-                  Icons.bolt_outlined,
-                  size: 18,
-                  color: Color(0xFF55E08F),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    goleiro.fundamento,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              goleiro.alerta,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFFB7C5BC)),
-            ),
-          ],
-        ),
-      ),
+      child: const _MensagemSemDados(),
     );
   }
 }
@@ -944,31 +1091,9 @@ class _MapaDesempenho extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const fundamentos = [
-      _Fundamento('Reflexo', 0.88),
-      _Fundamento('Posicionamento', 0.81),
-      _Fundamento('Bolas aéreas', 0.74),
-      _Fundamento('Um contra um', 0.78),
-      _Fundamento('Reposição', 0.86),
-    ];
-
     return _Bloco(
       titulo: 'Mapa de desempenho',
-      child: Column(
-        children: [
-          for (final item in fundamentos) ...[
-            Row(
-              children: [
-                SizedBox(width: 116, child: Text(item.nome)),
-                Expanded(child: LinearProgressIndicator(value: item.valor)),
-                const SizedBox(width: 12),
-                Text('${(item.valor * 100).round()}%'),
-              ],
-            ),
-            if (item != fundamentos.last) const SizedBox(height: 16),
-          ],
-        ],
-      ),
+      child: const _MensagemSemDados(),
     );
   }
 }
@@ -978,31 +1103,38 @@ class _SessoesRecentes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const sessoes = [
-      'Treino de reflexo • Hoje, 09:30',
-      'Cruzamentos laterais • Ontem, 16:10',
-      'Saída curta com pés • 08/06, 14:00',
-    ];
+    final dashboard = context.watch<DashboardProvider>();
+    final sessoes = (dashboard.data?.sessoesRecentes ?? const []).take(3).map((
+      sessao,
+    ) {
+      final titulo = sessao['title']?.toString() ?? 'Sessão sem título';
+      final tipo = sessao['session_type']?.toString();
+      return tipo == null || tipo.isEmpty ? titulo : '$titulo • $tipo';
+    }).toList();
 
     return _Bloco(
       titulo: 'Sessões recentes',
-      child: Column(
-        children: [
-          for (final sessao in sessoes) ...[
-            Row(
+      child: dashboard.isLoading && sessoes.isEmpty
+          ? const _MensagemSemDados(texto: 'Carregando dados da API')
+          : sessoes.isEmpty
+          ? const _MensagemSemDados()
+          : Column(
               children: [
-                const Icon(
-                  Icons.event_available_outlined,
-                  color: Color(0xFF55E08F),
-                ),
-                const SizedBox(width: 10),
-                Expanded(child: Text(sessao)),
+                for (final sessao in sessoes) ...[
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.event_available_outlined,
+                        color: Color(0xFF55E08F),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(sessao)),
+                    ],
+                  ),
+                  if (sessao != sessoes.last) const Divider(height: 24),
+                ],
               ],
             ),
-            if (sessao != sessoes.last) const Divider(height: 24),
-          ],
-        ],
-      ),
     );
   }
 }
@@ -1572,6 +1704,30 @@ class _Bloco extends StatelessWidget {
   }
 }
 
+class _MensagemSemDados extends StatelessWidget {
+  const _MensagemSemDados({this.texto = 'Sem dados disponíveis'});
+
+  final String texto;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(Icons.info_outline, color: Color(0xFF9CAEA2)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            texto,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF9CAEA2)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Etiqueta extends StatelessWidget {
   const _Etiqueta({required this.texto});
 
@@ -1628,29 +1784,6 @@ class _Analise {
   final String foco;
   final String status;
   final double progresso;
-}
-
-class _Goleiro {
-  const _Goleiro(
-    this.nome,
-    this.clube,
-    this.score,
-    this.fundamento,
-    this.alerta,
-  );
-
-  final String nome;
-  final String clube;
-  final String score;
-  final String fundamento;
-  final String alerta;
-}
-
-class _Fundamento {
-  const _Fundamento(this.nome, this.valor);
-
-  final String nome;
-  final double valor;
 }
 
 class _MetricaSecao {
