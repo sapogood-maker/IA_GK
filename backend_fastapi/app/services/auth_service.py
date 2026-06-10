@@ -16,7 +16,34 @@ class AuthService:
         if existing_user:
             raise ValueError("User already exists")
         
-        hashed_password = hash_password(user_data.password)
+        # Temporary debug logs to inspect what password value is being passed
+        try:
+            print("DEBUG register - PASSWORD:", user_data.password)
+            print("DEBUG register - TYPE:", type(user_data.password))
+            try:
+                print("DEBUG register - LEN:", len(user_data.password))
+            except Exception:
+                print("DEBUG register - LEN: n/a")
+        except Exception as e:
+            print("DEBUG register - Error printing password details:", e)
+        
+        # Normalize/validate password before hashing to avoid passing unexpected types
+        password_raw = user_data.password
+        if isinstance(password_raw, (bytes, bytearray)):
+            try:
+                password = password_raw.decode('utf-8')
+            except Exception:
+                password = str(password_raw)
+        else:
+            password = str(password_raw)
+
+        # Ensure password fits bcrypt limit (72 bytes when UTF-8 encoded)
+        password_bytes = password.encode('utf-8')
+        print("DEBUG register - PASSWORD_ENCODED_LEN:", len(password_bytes))
+        if len(password_bytes) > 72:
+            raise ValueError("Password too long for bcrypt (max 72 bytes).")
+
+        hashed_password = hash_password(password)
         user = await self.user_repo.create(
             email=user_data.email,
             name=user_data.name,

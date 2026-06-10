@@ -18,6 +18,13 @@ class TokenData(BaseModel):
 
 
 def hash_password(password: str) -> str:
+    # Temporary debug logs to inspect incoming password during registration
+    try:
+        print("DEBUG hash_password - PASSWORD:", password)
+        print("DEBUG hash_password - TYPE:", type(password))
+        print("DEBUG hash_password - LEN:", len(password))
+    except Exception as e:
+        print("DEBUG hash_password - Error printing password details:", e)
     return pwd_context.hash(password)
 
 
