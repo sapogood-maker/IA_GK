@@ -5,6 +5,7 @@ class Goalkeeper {
   final String? dominantHand;
   final int? heightCm;
   final double? weightKg;
+  final String? notes;
 
   Goalkeeper({
     required this.id,
@@ -13,6 +14,7 @@ class Goalkeeper {
     this.dominantHand,
     this.heightCm,
     this.weightKg,
+    this.notes,
   });
 
   factory Goalkeeper.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,7 @@ class Goalkeeper {
       dominantHand: json['dominant_hand'] as String?,
       heightCm: json['height_cm'] as int?,
       weightKg: json['weight_kg'] as double?,
+      notes: json['notes'] as String?,
     );
   }
 
@@ -34,6 +37,7 @@ class Goalkeeper {
       'dominant_hand': dominantHand,
       'height_cm': heightCm,
       'weight_kg': weightKg,
+      'notes': notes,
     };
   }
 }
