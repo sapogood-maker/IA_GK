@@ -1,7 +1,5 @@
 import 'package:dio/dio.dart';
-
-import '../core/api_config.dart';
-import 'session_service.dart';
+import 'core/api_config.dart';
 
 class ApiClient {
   ApiClient(this._sessionService) {
@@ -14,47 +12,18 @@ class ApiClient {
           }
           handler.next(options);
         },
-        onError: (error, handler) async {
-          final statusCode = error.response?.statusCode;
-          final isRefreshRequest = error.requestOptions.path.contains(
-            '/api/v1/auth/refresh',
-          );
-
-          if (statusCode == 401 && !isRefreshRequest) {
-            final refreshed = await _refreshToken();
-            if (refreshed) {
-              try {
-                final retry = await _dio.fetch<dynamic>(
-                  error.requestOptions
-                    ..headers['Authorization'] =
-                        'Bearer ${_sessionService.accessToken}',
-                );
-                handler.resolve(retry);
-                return;
-              } on DioException catch (retryError) {
-                handler.next(retryError);
-                return;
-              }
-            }
+        onResponse: (response, handler) {
+          if (response.statusCode == 401) {
+            _refreshToken();
           }
-
-          handler.next(error);
+          handler.next(response);
         },
       ),
     );
   }
 
   final SessionService _sessionService;
-  final Dio _dio = Dio(
-    BaseOptions(
-      baseUrl: ApiConfig.baseUrl,
-      connectTimeout: const Duration(seconds: 12),
-      receiveTimeout: const Duration(seconds: 20),
-      headers: {'Accept': 'application/json'},
-    ),
-  );
-
-  Dio get dio => _dio;
+  final Dio _dio = Dio();
 
   Future<bool> _refreshToken() async {
     final refreshToken = _sessionService.refreshToken;
@@ -66,14 +35,17 @@ class ApiClient {
     try {
       final response = await Dio(
         BaseOptions(baseUrl: ApiConfig.baseUrl),
-      ).post('/api/v1/auth/refresh', data: {'refresh_token': refreshToken});
-      final data = response.data as Map<String, dynamic>;
+      ).post<Map<String, dynamic>>(
+        '/api/v1/auth/refresh',
+        data: {'refresh_token': refreshToken},
+      );
+      final tokens = AuthTokens.fromJson(response.data ?? {});
       await _sessionService.saveTokens(
-        accessToken: data['access_token'] as String,
-        refreshToken: data['refresh_token'] as String,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
       );
       return true;
-    } on DioException {
+    } catch (e) {
       await _sessionService.clear();
       return false;
     }
