@@ -78,7 +78,7 @@ class GoalkeeperBase(BaseModel):
     birth_date: Optional[datetime] = None
     dominant_hand: Optional[str] = None
     height_cm: Optional[int] = None
-    weight_kg: Optional[int] = None
+    weight_kg: Optional[float] = None
 
 
 class GoalkeeperCreate(GoalkeeperBase):

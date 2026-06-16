@@ -9,4 +9,12 @@ class GoalkeeperService {
   Future<Goalkeeper> createGoalkeeper(Goalkeeper goalkeeper) async {
     return await _repository.createGoalkeeper(goalkeeper);
   }
+
+  Future<List<Goalkeeper>> getGoalkeepersByClubId(String clubId) async {
+    return await _repository.getGoalkeepersByClubId(clubId);
+  }
+
+  Future<Goalkeeper> getGoalkeeperById(String gkId) async {
+    return await _repository.getGoalkeeperById(gkId);
+  }
 }
