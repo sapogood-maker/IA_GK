@@ -13,7 +13,7 @@ class GoalkeeperRepository {
     );
 
     if (response.statusCode == 201) {
-      return Goalkeeper.fromJson(response.data);
+      return Goalkeeper.fromJson(response.data!);
     } else {
       throw Exception('Failed to create goalkeeper');
     }
@@ -26,7 +26,7 @@ class GoalkeeperRepository {
     );
 
     if (response.statusCode == 200) {
-      return (response.data as List).map((item) => Goalkeeper.fromJson(item)).toList();
+      return (response.data! as List).map((item) => Goalkeeper.fromJson(item)).toList();
     } else {
       throw Exception('Failed to fetch goalkeepers');
     }
@@ -38,7 +38,7 @@ class GoalkeeperRepository {
     );
 
     if (response.statusCode == 200) {
-      return Goalkeeper.fromJson(response.data);
+      return Goalkeeper.fromJson(response.data!);
     } else {
       throw Exception('Failed to fetch goalkeeper');
     }
