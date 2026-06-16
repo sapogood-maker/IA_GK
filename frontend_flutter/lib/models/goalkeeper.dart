@@ -4,6 +4,7 @@ class Goalkeeper {
   final DateTime? birthDate;
   final String? dominantHand;
   final int? heightCm;
+  final double? weightKg;
 
   Goalkeeper({
     required this.id,
@@ -11,6 +12,7 @@ class Goalkeeper {
     this.birthDate,
     this.dominantHand,
     this.heightCm,
+    this.weightKg,
   });
 
   factory Goalkeeper.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class Goalkeeper {
       birthDate: json['birth_date'] != null ? DateTime.parse(json['birth_date']) : null,
       dominantHand: json['dominant_hand'] as String?,
       heightCm: json['height_cm'] as int?,
+      weightKg: json['weight_kg'] as double?,
     );
   }
 
@@ -30,6 +33,7 @@ class Goalkeeper {
       'birth_date': birthDate?.toIso8601String(),
       'dominant_hand': dominantHand,
       'height_cm': heightCm,
+      'weight_kg': weightKg,
     };
   }
 }

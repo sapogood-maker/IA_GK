@@ -15,4 +15,26 @@ class GoalkeeperProvider with ChangeNotifier {
       print('Error creating goalkeeper: $e');
     }
   }
+
+  Future<List<Goalkeeper>> getGoalkeepersByClubId(String clubId) async {
+    try {
+      final goalkeepers = await _service.getGoalkeepersByClubId(clubId);
+      // Notify listeners or update state as needed
+      return goalkeepers;
+    } catch (e) {
+      print('Error fetching goalkeepers: $e');
+      throw e;
+    }
+  }
+
+  Future<Goalkeeper> getGoalkeeperById(String gkId) async {
+    try {
+      final goalkeeper = await _service.getGoalkeeperById(gkId);
+      // Notify listeners or update state as needed
+      return goalkeeper;
+    } catch (e) {
+      print('Error fetching goalkeeper: $e');
+      throw e;
+    }
+  }
 }
