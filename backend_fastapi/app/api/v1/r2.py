@@ -5,11 +5,16 @@ import tempfile
 import os
 
 from app.core.r2 import get_r2_service, R2ValidationError, R2Service
-from app.core.security import get_current_user
+from app.core.authorization import require_roles
+from app.models.models import UserRole
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/r2", tags=["r2"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/api/v1/r2",
+    tags=["r2"],
+    dependencies=[Depends(require_roles(UserRole.SYSTEM_ADMIN))],
+)
 
 
 class HealthResponse(BaseModel):

@@ -4,6 +4,7 @@ class AuthUser {
     required this.name,
     required this.email,
     required this.role,
+    this.clubId,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
@@ -12,6 +13,7 @@ class AuthUser {
       name: json['name'] as String? ?? '',
       email: json['email'] as String? ?? '',
       role: json['role'] as String? ?? '',
+      clubId: json['club_id'] as String?,
     );
   }
 
@@ -19,4 +21,5 @@ class AuthUser {
   final String name;
   final String email;
   final String role;
+  final String? clubId;
 }

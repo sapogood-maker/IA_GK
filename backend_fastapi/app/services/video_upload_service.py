@@ -140,7 +140,7 @@ class VideoUploadService:
             job = await self.job_repo.create(
                 video_id=video.id,
                 job_type="video_processing",
-                status=ProcessingJobStatus.PENDING.value,
+                status=ProcessingJobStatus.QUEUED.value,
                 progress=0.0
             )
             

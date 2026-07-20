@@ -1,17 +1,33 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
+
+from app.models.models import UserRole
 
 
 class UserBase(BaseModel):
     name: str
     email: EmailStr
-    role: str = "viewer"
+    role: str = UserRole.TREINADOR.value
+    # Clube ao qual o usuario pertence (tenant). Obrigatorio para todo papel
+    # exceto SYSTEM_ADMIN. Validado em AuthService.register (nao aqui),
+    # porque essa regra depende de estado do banco: o primeiro usuario do
+    # sistema vira SYSTEM_ADMIN via bootstrap e nao tem clube nenhum ainda
+    # (ver SPRINT5_REPORT.md).
+    club_id: Optional[UUID] = None
 
 
 class UserCreate(UserBase):
     password: str
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, v):
+        valid_roles = {r.value for r in UserRole}
+        if v not in valid_roles:
+            raise ValueError(f"Invalid role. Allowed: {', '.join(sorted(valid_roles))}")
+        return v
 
 
 class UserResponse(UserBase):
@@ -176,7 +192,7 @@ class ProcessingJobBase(BaseModel):
     video_id: UUID
     job_type: Optional[str] = None
     worker_id: Optional[str] = None
-    status: str = "PENDING"
+    status: str = "QUEUED"
     progress: Optional[float] = 0.0
     retry_count: Optional[int] = 0
     error_message: Optional[str] = None

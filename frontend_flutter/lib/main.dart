@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:file_picker/file_picker.dart';
 
+import 'models/auth_user.dart';
 import 'models/club.dart';
 import 'models/goalkeeper.dart';
 import 'models/training_session.dart';
@@ -13,13 +14,17 @@ import 'providers/auth_provider.dart';
 import 'providers/club_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'providers/goalkeeper_provider.dart';
+import 'providers/system_provider.dart';
 import 'providers/training_session_provider.dart';
+import 'providers/user_provider.dart';
 import 'providers/video_provider.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/club_repository.dart';
 import 'repositories/dashboard_repository.dart';
 import 'repositories/goalkeeper_repository.dart';
+import 'repositories/system_repository.dart';
 import 'repositories/training_session_repository.dart';
+import 'repositories/user_repository.dart';
 import 'repositories/video_repository.dart';
 import 'services/api_client.dart';
 import 'services/goalkeeper_service.dart';
@@ -38,6 +43,8 @@ Future<void> main() async {
   final clubRepository = ClubRepository(apiClient);
   final trainingSessionRepository = TrainingSessionRepository(apiClient);
   final videoRepository = VideoRepository(apiClient);
+  final userRepository = UserRepository(apiClient);
+  final systemRepository = SystemRepository(apiClient);
   final authProvider = AuthProvider(authRepository, sessionService);
 
   await authProvider.initialize();
@@ -52,6 +59,8 @@ Future<void> main() async {
         trainingSessionRepository,
       ),
       videoProvider: VideoProvider(videoRepository),
+      userProvider: UserProvider(userRepository),
+      systemProvider: SystemProvider(systemRepository),
     ),
   );
 }
@@ -153,6 +162,8 @@ class GkPerformanceApp extends StatelessWidget {
     required this.clubProvider,
     required this.trainingSessionProvider,
     required this.videoProvider,
+    required this.userProvider,
+    required this.systemProvider,
   });
 
   final AuthProvider authProvider;
@@ -161,6 +172,8 @@ class GkPerformanceApp extends StatelessWidget {
   final ClubProvider clubProvider;
   final TrainingSessionProvider trainingSessionProvider;
   final VideoProvider videoProvider;
+  final UserProvider userProvider;
+  final SystemProvider systemProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -179,6 +192,8 @@ class GkPerformanceApp extends StatelessWidget {
           value: trainingSessionProvider,
         ),
         ChangeNotifierProvider<VideoProvider>.value(value: videoProvider),
+        ChangeNotifierProvider<UserProvider>.value(value: userProvider),
+        ChangeNotifierProvider<SystemProvider>.value(value: systemProvider),
       ],
       child: Builder(
         builder: (context) {
@@ -2120,14 +2135,34 @@ class _VideosScreenState extends State<VideosScreen> {
   }
 }
 
+/// Rotulo em PT-BR para os estados oficiais do pipeline de IA
+/// (ProcessingJobStatus - ver SPRINT5_REPORT.md e AI_WORKER_ARCHITECTURE.md).
 String _rotuloStatusVideo(Video video) {
   final jobStatus = video.jobStatus;
-  if (jobStatus == 'RUNNING') return 'Em processamento';
-  if (jobStatus == 'COMPLETED' || video.uploadStatus == 'COMPLETED') {
-    return 'Concluído';
+  switch (jobStatus) {
+    case 'QUEUED':
+      return 'Na fila';
+    case 'DOWNLOADING':
+      return 'Baixando do R2';
+    case 'PREPROCESSING':
+      return 'Pré-processando';
+    case 'INFERENCE':
+      return 'Em processamento (IA)';
+    case 'POSTPROCESSING':
+      return 'Pós-processando';
+    case 'GENERATING_REPORT':
+      return 'Gerando relatório';
+    case 'UPLOADING_RESULTS':
+      return 'Enviando resultados';
+    case 'COMPLETED':
+      return 'Concluído';
+    case 'FAILED':
+      return 'Falha';
+    case 'CANCELLED':
+      return 'Cancelado';
   }
-  if (jobStatus == 'FAILED' || video.uploadStatus == 'FAILED') return 'Falha';
-  if (jobStatus == 'PENDING') return 'Aguardando processamento';
+  if (video.uploadStatus == 'COMPLETED') return 'Concluído';
+  if (video.uploadStatus == 'FAILED') return 'Falha';
   if (video.uploadStatus == 'UPLOADED') return 'No R2';
   return 'Enviado';
 }
@@ -2611,51 +2646,390 @@ class TelegramScreen extends StatelessWidget {
   }
 }
 
-class UsuariosScreen extends StatelessWidget {
+String _rotuloPapel(String role) {
+  switch (role) {
+    case 'system_admin':
+      return 'Administrador do Sistema';
+    case 'clube':
+      return 'Clube';
+    case 'treinador':
+      return 'Treinador';
+    case 'analista':
+      return 'Analista';
+    default:
+      return role;
+  }
+}
+
+class UsuariosScreen extends StatefulWidget {
   const UsuariosScreen({super.key});
 
   @override
+  State<UsuariosScreen> createState() => _UsuariosScreenState();
+}
+
+class _UsuariosScreenState extends State<UsuariosScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<UserProvider>().loadAll();
+        context.read<ClubProvider>().load();
+      }
+    });
+  }
+
+  String _nomeClube(List<Club> clubes, String? clubeId) {
+    if (clubeId == null) return 'Acesso global (sem clube)';
+    for (final clube in clubes) {
+      if (clube.id == clubeId) return clube.name;
+    }
+    return 'Clube não identificado';
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const _TelaSecao(
-      titulo: 'Usuários',
-      subtitulo:
-          'Acessos de treinadores, analistas e gestores dos clubes brasileiros',
-      acao: 'Novo Usuário',
-      icone: Icons.group_outlined,
-      metricas: [
-        _MetricaSecao('Usuários ativos', '48', 'Com acesso liberado'),
-        _MetricaSecao('Treinadores', '31', 'Perfil técnico'),
-        _MetricaSecao('Convites pendentes', '5', 'Aguardando aceite'),
-      ],
-      itens: [
-        _ItemSecao('Marcos Oliveira', 'Treinador • São Paulo FC Sub-20'),
-        _ItemSecao('Fernanda Costa', 'Analista • Santos FC Feminino'),
-        _ItemSecao('Rogério Lima', 'Gestor • Palmeiras Base'),
+    final userProvider = context.watch<UserProvider>();
+    final clubProvider = context.watch<ClubProvider>();
+    final usuarios = userProvider.users;
+    final carregando = userProvider.isLoading && usuarios.isEmpty;
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            child: _CabecalhoSecao(
+              titulo: 'Usuários',
+              subtitulo:
+                  'Acessos de treinadores, analistas e gestores dos clubes',
+              acao: 'Atualizar',
+              icone: Icons.group_outlined,
+              onAcao: () => context.read<UserProvider>().loadAll(),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Usuários cadastrados',
+              child: carregando
+                  ? const _MensagemSemDados(texto: 'Carregando usuários')
+                  : userProvider.isForbidden
+                  ? _MensagemSemDados(
+                      texto:
+                          userProvider.errorMessage ??
+                          'Acesso restrito a administradores.',
+                    )
+                  : userProvider.errorMessage != null && usuarios.isEmpty
+                  ? _MensagemSemDados(texto: userProvider.errorMessage!)
+                  : usuarios.isEmpty
+                  ? const _MensagemSemDados(
+                      texto: 'Nenhum usuário cadastrado ainda',
+                    )
+                  : Column(
+                      children: [
+                        for (final usuario in usuarios) ...[
+                          _LinhaUsuario(
+                            usuario: usuario,
+                            nomeClube: _nomeClube(
+                              clubProvider.clubs,
+                              usuario.clubId,
+                            ),
+                          ),
+                          if (usuario != usuarios.last)
+                            const Divider(height: 24),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        ),
       ],
     );
   }
 }
 
-class ConfiguracoesScreen extends StatelessWidget {
-  const ConfiguracoesScreen({super.key});
+class _LinhaUsuario extends StatelessWidget {
+  const _LinhaUsuario({required this.usuario, required this.nomeClube});
+
+  final AuthUser usuario;
+  final String nomeClube;
 
   @override
   Widget build(BuildContext context) {
-    return const _TelaSecao(
-      titulo: 'Configurações',
-      subtitulo:
-          'Parâmetros da plataforma, integrações e preferências de análise',
-      acao: 'Salvar',
-      icone: Icons.settings_outlined,
-      metricas: [
-        _MetricaSecao('Integrações', '4', 'Serviços conectados'),
-        _MetricaSecao('Modelos de análise', '3', 'Perfis técnicos'),
-        _MetricaSecao('Permissões', '6', 'Papéis configurados'),
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16251B),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.person_outline, color: Color(0xFF55E08F)),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                usuario.name,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${usuario.email} • $nomeClube',
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 14),
+        _Etiqueta(texto: _rotuloPapel(usuario.role)),
       ],
-      itens: [
-        _ItemSecao('Critérios do GK Score', 'Pesos técnicos por fundamento'),
-        _ItemSecao('Armazenamento de vídeos', 'Bucket R2 conectado'),
-        _ItemSecao('Notificações', 'Telegram e alertas internos'),
+    );
+  }
+}
+
+class ConfiguracoesScreen extends StatefulWidget {
+  const ConfiguracoesScreen({super.key});
+
+  @override
+  State<ConfiguracoesScreen> createState() => _ConfiguracoesScreenState();
+}
+
+class _ConfiguracoesScreenState extends State<ConfiguracoesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ClubProvider>().load();
+        final auth = context.read<AuthProvider>();
+        if (auth.user?.role == 'system_admin') {
+          context.read<SystemProvider>().loadR2Health();
+        }
+      }
+    });
+  }
+
+  String _nomeClube(List<Club> clubes, String? clubeId) {
+    if (clubeId == null) return 'Acesso global (sem clube)';
+    for (final clube in clubes) {
+      if (clube.id == clubeId) return clube.name;
+    }
+    return 'Clube não identificado';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final clubProvider = context.watch<ClubProvider>();
+    final usuario = auth.user;
+    final ehAdmin = usuario?.role == 'system_admin';
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            child: _CabecalhoSecao(
+              titulo: 'Configurações',
+              subtitulo:
+                  'Seu perfil, permissões do papel atual e status do sistema',
+              acao: 'Atualizar',
+              icone: Icons.settings_outlined,
+              onAcao: () {
+                context.read<ClubProvider>().load();
+                if (ehAdmin) context.read<SystemProvider>().loadR2Health();
+              },
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Meu perfil',
+              child: usuario == null
+                  ? const _MensagemSemDados()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _LinhaPerfil(rotulo: 'Nome', valor: usuario.name),
+                        const Divider(height: 24),
+                        _LinhaPerfil(rotulo: 'E-mail', valor: usuario.email),
+                        const Divider(height: 24),
+                        _LinhaPerfil(
+                          rotulo: 'Papel',
+                          valor: _rotuloPapel(usuario.role),
+                        ),
+                        const Divider(height: 24),
+                        _LinhaPerfil(
+                          rotulo: 'Clube',
+                          valor: _nomeClube(
+                            clubProvider.clubs,
+                            usuario.clubId,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Permissões por papel',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  _LinhaPermissao(
+                    papel: 'Administrador do Sistema',
+                    descricao:
+                        'Acesso total: vê todos os clubes, cria novos clubes, gerencia usuários e configurações globais.',
+                  ),
+                  Divider(height: 24),
+                  _LinhaPermissao(
+                    papel: 'Clube',
+                    descricao:
+                        'Acessa exclusivamente os próprios dados (goleiros, sessões, vídeos, análises e relatórios do clube).',
+                  ),
+                  Divider(height: 24),
+                  _LinhaPermissao(
+                    papel: 'Treinador',
+                    descricao: 'Acessa exclusivamente os dados do próprio clube.',
+                  ),
+                  Divider(height: 24),
+                  _LinhaPermissao(
+                    papel: 'Analista',
+                    descricao: 'Acessa exclusivamente os dados do próprio clube.',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Sistema',
+              child: !ehAdmin
+                  ? const _MensagemSemDados(
+                      texto:
+                          'Status do sistema visível apenas para administradores.',
+                    )
+                  : Consumer<SystemProvider>(
+                      builder: (context, systemProvider, _) {
+                        if (systemProvider.isLoading) {
+                          return const _MensagemSemDados(
+                            texto: 'Verificando conexão com o R2...',
+                          );
+                        }
+                        final r2 = systemProvider.r2Health;
+                        if (r2 == null) {
+                          return _MensagemSemDados(
+                            texto:
+                                systemProvider.errorMessage ??
+                                'Não foi possível verificar o R2.',
+                          );
+                        }
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _LinhaPerfil(
+                              rotulo: 'Armazenamento (R2)',
+                              valor: r2.bucket,
+                            ),
+                            const Divider(height: 24),
+                            _LinhaPerfil(
+                              rotulo: 'Leitura',
+                              valor: r2.readAccess ? 'OK' : 'Falhou',
+                            ),
+                            const Divider(height: 24),
+                            _LinhaPerfil(
+                              rotulo: 'Escrita',
+                              valor: r2.writeAccess ? 'OK' : 'Falhou',
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LinhaPerfil extends StatelessWidget {
+  const _LinhaPerfil({required this.rotulo, required this.valor});
+
+  final String rotulo;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 140,
+          child: Text(
+            rotulo,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            valor,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LinhaPermissao extends StatelessWidget {
+  const _LinhaPermissao({required this.papel, required this.descricao});
+
+  final String papel;
+  final String descricao;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          papel,
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          descricao,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+        ),
       ],
     );
   }

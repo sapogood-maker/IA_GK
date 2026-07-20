@@ -11,25 +11,36 @@ from app.schemas.schemas import (
 from app.repositories.repositories import VideoRepository, TrainingSessionRepository, ProcessingJobRepository
 from app.services.video_upload_service import VideoUploadService
 from app.core.security import get_current_user
+from app.core.authorization import is_admin, effective_club_scope, resolve_club_id_for_training_session, resolve_club_id_for_video
+from app.models.models import User
 
 router = APIRouter(prefix="/api/v1/videos", tags=["videos"], dependencies=[Depends(get_current_user)])
+
+
+async def _ensure_video_access(video_id: UUID, current_user: User, db: AsyncSession) -> None:
+    if is_admin(current_user):
+        return
+    club_id = await resolve_club_id_for_video(db, video_id)
+    if club_id != current_user.club_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
 
 @router.post("/upload", response_model=VideoUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_video(
     training_session_id: UUID,
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     r2_service: R2Service = Depends(get_r2_service)
 ):
     """
     Upload a video file to R2.
-    
+
     Accepts multipart file upload with validation for:
     - File extensions: mp4, mov, avi, mkv
     - MIME type: video/*
     - Maximum file size (configurable via ENV)
-    
+
     Returns:
     - video_id: UUID of created video
     - job_id: UUID of created processing job
@@ -37,15 +48,20 @@ async def upload_video(
     - r2_key: Path in R2 bucket
     - r2_url: Public URL to video
     """
+    if not is_admin(current_user):
+        session_club_id = await resolve_club_id_for_training_session(db, training_session_id)
+        if session_club_id != current_user.club_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
     upload_service = VideoUploadService(db, r2_service)
     result = await upload_service.upload_video(training_session_id, file)
-    
+
     if not result.get("success"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result.get("error", "Unknown error")
         )
-    
+
     return VideoUploadResponse(
         video_id=result["video_id"],
         job_id=result["job_id"],
@@ -58,12 +74,13 @@ async def upload_video(
 @router.get("/{video_id}/status", response_model=VideoStatusResponse)
 async def get_video_status(
     video_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     r2_service: R2Service = Depends(get_r2_service)
 ):
     """
     Get video and processing job status.
-    
+
     Returns:
     - video_id: UUID of video
     - video_status: Current upload/processing status
@@ -71,15 +88,17 @@ async def get_video_status(
     - progress: Processing progress (0-100)
     - r2_url: Public URL to video
     """
+    await _ensure_video_access(video_id, current_user, db)
+
     upload_service = VideoUploadService(db, r2_service)
     result = await upload_service.get_video_status(video_id)
-    
+
     if not result.get("success"):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=result.get("error", "Video not found")
         )
-    
+
     return VideoStatusResponse(
         video_id=result["video_id"],
         video_status=result["video_status"],
@@ -90,15 +109,24 @@ async def get_video_status(
 
 
 @router.post("", response_model=VideoResponse, status_code=status.HTTP_201_CREATED)
-async def create_video(video_data: VideoCreate, db: AsyncSession = Depends(get_db)):
+async def create_video(
+    video_data: VideoCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a new video record (legacy endpoint)."""
     session_repo = TrainingSessionRepository(db)
-    
+
     # Validate training session exists
     session = await session_repo.get_by_id(video_data.training_session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Training session not found")
-    
+
+    if not is_admin(current_user):
+        session_club_id = await resolve_club_id_for_training_session(db, video_data.training_session_id)
+        if session_club_id != current_user.club_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
     video_repo = VideoRepository(db)
     return await video_repo.create(
         training_session_id=video_data.training_session_id,
@@ -117,11 +145,15 @@ async def create_video(video_data: VideoCreate, db: AsyncSession = Depends(get_d
 @router.get("", response_model=list[VideoResponse])
 async def list_videos(
     training_session_id: UUID = None,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """List videos with optional filtering by training session."""
     video_repo = VideoRepository(db)
-    
+    scope = effective_club_scope(current_user)
+
+    if scope is not None:
+        return await video_repo.get_by_club_id(scope)
     if training_session_id:
         return await video_repo.get_by_training_session_id(training_session_id)
     else:
@@ -129,12 +161,17 @@ async def list_videos(
 
 
 @router.get("/{video_id}", response_model=VideoResponse)
-async def get_video(video_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_video(
+    video_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Get a specific video."""
     video_repo = VideoRepository(db)
     video = await video_repo.get_by_id(video_id)
     if not video:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+    await _ensure_video_access(video_id, current_user, db)
     return video
 
 
@@ -142,22 +179,32 @@ async def get_video(video_id: UUID, db: AsyncSession = Depends(get_db)):
 async def update_video(
     video_id: UUID,
     video_data: VideoUpdate,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update a video."""
     video_repo = VideoRepository(db)
     video = await video_repo.get_by_id(video_id)
     if not video:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
-    
+    await _ensure_video_access(video_id, current_user, db)
+
     update_data = video_data.model_dump(exclude_unset=True)
     return await video_repo.update(video_id, **update_data)
 
 
 @router.delete("/{video_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_video(video_id: UUID, db: AsyncSession = Depends(get_db)):
+async def delete_video(
+    video_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Delete a video."""
     video_repo = VideoRepository(db)
+    video = await video_repo.get_by_id(video_id)
+    if not video:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")
+    await _ensure_video_access(video_id, current_user, db)
     success = await video_repo.delete(video_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video not found")

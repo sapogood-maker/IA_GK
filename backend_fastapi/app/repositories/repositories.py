@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from app.models.models import User, Club, Coach, Goalkeeper, TrainingSession, Video, ProcessingJob
@@ -8,12 +8,16 @@ class UserRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, email: str, name: str, password_hash: str, role: str = "viewer") -> User:
-        user = User(email=email, name=name, password_hash=password_hash, role=role)
+    async def create(self, email: str, name: str, password_hash: str, role: str, club_id: UUID | None = None) -> User:
+        user = User(email=email, name=name, password_hash=password_hash, role=role, club_id=club_id)
         self.db.add(user)
         await self.db.commit()
         await self.db.refresh(user)
         return user
+
+    async def get_by_club_id(self, club_id: UUID) -> list[User]:
+        result = await self.db.execute(select(User).where(User.club_id == club_id))
+        return result.scalars().all()
 
     async def get_by_email(self, email: str) -> User | None:
         result = await self.db.execute(select(User).where(User.email == email))
@@ -26,6 +30,10 @@ class UserRepository:
     async def get_all(self) -> list[User]:
         result = await self.db.execute(select(User))
         return result.scalars().all()
+
+    async def count(self) -> int:
+        result = await self.db.execute(select(func.count()).select_from(User))
+        return result.scalar_one()
 
 
 class ClubRepository:
@@ -133,6 +141,16 @@ class TrainingSessionRepository:
         result = await self.db.execute(select(TrainingSession))
         return result.scalars().all()
 
+    async def get_by_club_id(self, club_id: UUID) -> list[TrainingSession]:
+        """Sessoes de qualquer goleiro pertencente ao clube informado -
+        usado para escopar a listagem por tenant (ver app/core/authorization.py)."""
+        result = await self.db.execute(
+            select(TrainingSession)
+            .join(Goalkeeper, TrainingSession.goalkeeper_id == Goalkeeper.id)
+            .where(Goalkeeper.club_id == club_id)
+        )
+        return result.scalars().all()
+
     async def update(self, session_id: UUID, **kwargs) -> TrainingSession | None:
         session = await self.get_by_id(session_id)
         if not session:
@@ -199,6 +217,17 @@ class VideoRepository:
         result = await self.db.execute(select(Video))
         return result.scalars().all()
 
+    async def get_by_club_id(self, club_id: UUID) -> list[Video]:
+        """Videos de qualquer sessao de goleiro pertencente ao clube
+        informado - usado para escopar a listagem por tenant."""
+        result = await self.db.execute(
+            select(Video)
+            .join(TrainingSession, Video.training_session_id == TrainingSession.id)
+            .join(Goalkeeper, TrainingSession.goalkeeper_id == Goalkeeper.id)
+            .where(Goalkeeper.club_id == club_id)
+        )
+        return result.scalars().all()
+
     async def update(self, video_id: UUID, **kwargs) -> Video | None:
         video = await self.get_by_id(video_id)
         if not video:
@@ -228,7 +257,7 @@ class ProcessingJobRepository:
         video_id: UUID,
         job_type: str | None = None,
         worker_id: str | None = None,
-        status: str = "PENDING",
+        status: str = "QUEUED",
         progress: float = 0.0,
         retry_count: int = 0,
         error_message: str | None = None
@@ -261,6 +290,18 @@ class ProcessingJobRepository:
 
     async def get_all(self) -> list[ProcessingJob]:
         result = await self.db.execute(select(ProcessingJob))
+        return result.scalars().all()
+
+    async def get_by_club_id(self, club_id: UUID) -> list[ProcessingJob]:
+        """Jobs de qualquer video de sessao de goleiro pertencente ao clube
+        informado - usado para escopar a listagem por tenant."""
+        result = await self.db.execute(
+            select(ProcessingJob)
+            .join(Video, ProcessingJob.video_id == Video.id)
+            .join(TrainingSession, Video.training_session_id == TrainingSession.id)
+            .join(Goalkeeper, TrainingSession.goalkeeper_id == Goalkeeper.id)
+            .where(Goalkeeper.club_id == club_id)
+        )
         return result.scalars().all()
 
     async def update(self, job_id: UUID, **kwargs) -> ProcessingJob | None:

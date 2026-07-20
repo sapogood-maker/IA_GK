@@ -42,5 +42,6 @@ async def me(user = Depends(get_current_user)):
         "id": str(user.id),
         "name": user.name,
         "email": user.email,
-        "role": user.role
+        "role": user.role,
+        "club_id": str(user.club_id) if user.club_id else None
     }

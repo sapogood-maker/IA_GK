@@ -5,27 +5,44 @@ from app.db.base import get_db
 from app.schemas.schemas import TrainingSessionCreate, TrainingSessionResponse, TrainingSessionUpdate
 from app.repositories.repositories import TrainingSessionRepository, GoalkeeperRepository, CoachRepository
 from app.core.security import get_current_user
+from app.core.authorization import is_admin, effective_club_scope, resolve_club_id_for_training_session
+from app.models.models import User
 
 router = APIRouter(prefix="/api/v1/training-sessions", tags=["training-sessions"], dependencies=[Depends(get_current_user)])
 
 
+async def _ensure_session_access(session_id: UUID, current_user: User, db: AsyncSession) -> None:
+    if is_admin(current_user):
+        return
+    club_id = await resolve_club_id_for_training_session(db, session_id)
+    if club_id != current_user.club_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+
 @router.post("", response_model=TrainingSessionResponse, status_code=status.HTTP_201_CREATED)
-async def create_training_session(session_data: TrainingSessionCreate, db: AsyncSession = Depends(get_db)):
+async def create_training_session(
+    session_data: TrainingSessionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Create a new training session."""
     gk_repo = GoalkeeperRepository(db)
     coach_repo = CoachRepository(db)
-    
+
     # Validate goalkeeper exists
     gk = await gk_repo.get_by_id(session_data.goalkeeper_id)
     if not gk:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goalkeeper not found")
-    
+
+    if not is_admin(current_user) and gk.club_id != current_user.club_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
     # Validate coach exists if provided
     if session_data.coach_id:
         coach = await coach_repo.get_by_id(session_data.coach_id)
         if not coach:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coach not found")
-    
+
     session_repo = TrainingSessionRepository(db)
     return await session_repo.create(
         goalkeeper_id=session_data.goalkeeper_id,
@@ -41,11 +58,15 @@ async def create_training_session(session_data: TrainingSessionCreate, db: Async
 async def list_training_sessions(
     goalkeeper_id: UUID = None,
     coach_id: UUID = None,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """List training sessions with optional filtering."""
     session_repo = TrainingSessionRepository(db)
-    
+    scope = effective_club_scope(current_user)
+
+    if scope is not None:
+        return await session_repo.get_by_club_id(scope)
     if goalkeeper_id:
         return await session_repo.get_by_goalkeeper_id(goalkeeper_id)
     elif coach_id:
@@ -55,12 +76,17 @@ async def list_training_sessions(
 
 
 @router.get("/{session_id}", response_model=TrainingSessionResponse)
-async def get_training_session(session_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_training_session(
+    session_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Get a specific training session."""
     session_repo = TrainingSessionRepository(db)
     session = await session_repo.get_by_id(session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Training session not found")
+    await _ensure_session_access(session_id, current_user, db)
     return session
 
 
@@ -68,22 +94,32 @@ async def get_training_session(session_id: UUID, db: AsyncSession = Depends(get_
 async def update_training_session(
     session_id: UUID,
     session_data: TrainingSessionUpdate,
-    db: AsyncSession = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update a training session."""
     session_repo = TrainingSessionRepository(db)
     session = await session_repo.get_by_id(session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Training session not found")
-    
+    await _ensure_session_access(session_id, current_user, db)
+
     update_data = session_data.model_dump(exclude_unset=True)
     return await session_repo.update(session_id, **update_data)
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_training_session(session_id: UUID, db: AsyncSession = Depends(get_db)):
+async def delete_training_session(
+    session_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Delete a training session."""
     session_repo = TrainingSessionRepository(db)
+    session = await session_repo.get_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Training session not found")
+    await _ensure_session_access(session_id, current_user, db)
     success = await session_repo.delete(session_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Training session not found")
