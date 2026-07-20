@@ -27,7 +27,7 @@ async def list_goalkeepers(club_id: UUID = None, db: AsyncSession = Depends(get_
     gk_repo = GoalkeeperRepository(db)
     if club_id:
         return await gk_repo.get_by_club_id(club_id)
-    return []
+    return await gk_repo.get_all()
 
 
 @router.get("/{gk_id}", response_model=GoalkeeperResponse)

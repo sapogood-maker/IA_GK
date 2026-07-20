@@ -3,11 +3,18 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'models/club.dart';
+import 'models/goalkeeper.dart';
 import 'providers/auth_provider.dart';
+import 'providers/club_provider.dart';
 import 'providers/dashboard_provider.dart';
+import 'providers/goalkeeper_provider.dart';
 import 'repositories/auth_repository.dart';
+import 'repositories/club_repository.dart';
 import 'repositories/dashboard_repository.dart';
+import 'repositories/goalkeeper_repository.dart';
 import 'services/api_client.dart';
+import 'services/goalkeeper_service.dart';
 import 'services/session_service.dart';
 
 Future<void> main() async {
@@ -18,6 +25,9 @@ Future<void> main() async {
   final apiClient = ApiClient(sessionService);
   final authRepository = AuthRepository(apiClient, sessionService);
   final dashboardRepository = DashboardRepository(apiClient);
+  final goalkeeperRepository = GoalkeeperRepository(apiClient);
+  final goalkeeperService = GoalkeeperService(goalkeeperRepository);
+  final clubRepository = ClubRepository(apiClient);
   final authProvider = AuthProvider(authRepository, sessionService);
 
   await authProvider.initialize();
@@ -26,6 +36,8 @@ Future<void> main() async {
     GkPerformanceApp(
       authProvider: authProvider,
       dashboardProvider: DashboardProvider(dashboardRepository),
+      goalkeeperProvider: GoalkeeperProvider(goalkeeperService),
+      clubProvider: ClubProvider(clubRepository),
     ),
   );
 }
@@ -123,10 +135,14 @@ class GkPerformanceApp extends StatelessWidget {
     super.key,
     required this.authProvider,
     required this.dashboardProvider,
+    required this.goalkeeperProvider,
+    required this.clubProvider,
   });
 
   final AuthProvider authProvider;
   final DashboardProvider dashboardProvider;
+  final GoalkeeperProvider goalkeeperProvider;
+  final ClubProvider clubProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -137,6 +153,10 @@ class GkPerformanceApp extends StatelessWidget {
         ChangeNotifierProvider<DashboardProvider>.value(
           value: dashboardProvider,
         ),
+        ChangeNotifierProvider<GoalkeeperProvider>.value(
+          value: goalkeeperProvider,
+        ),
+        ChangeNotifierProvider<ClubProvider>.value(value: clubProvider),
       ],
       child: Builder(
         builder: (context) {
@@ -1202,26 +1222,322 @@ class ClubesScreen extends StatelessWidget {
   }
 }
 
-class GoleirosScreen extends StatelessWidget {
+class GoleirosScreen extends StatefulWidget {
   const GoleirosScreen({super.key});
 
   @override
+  State<GoleirosScreen> createState() => _GoleirosScreenState();
+}
+
+class _GoleirosScreenState extends State<GoleirosScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<GoalkeeperProvider>().loadAll();
+        context.read<ClubProvider>().load();
+      }
+    });
+  }
+
+  Future<void> _abrirFormularioNovoGoleiro() async {
+    final clubes = context.read<ClubProvider>().clubs;
+
+    if (clubes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cadastre um clube antes de adicionar um goleiro.'),
+        ),
+      );
+      return;
+    }
+
+    final criado = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DialogNovoGoleiro(clubes: clubes),
+    );
+
+    if (criado == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Goleiro cadastrado com sucesso.')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const _TelaSecao(
-      titulo: 'Goleiros',
-      subtitulo:
-          'Acompanhamento técnico individual, evolução e indicadores de desempenho',
-      acao: 'Novo Goleiro',
-      icone: Icons.sports_handball_outlined,
-      metricas: [
-        _MetricaSecao('Goleiros ativos', '36', 'Em acompanhamento'),
-        _MetricaSecao('GK Score médio', '82,4', 'Últimos 30 dias'),
-        _MetricaSecao('Alertas técnicos', '9', 'Prioridade para treino'),
+    final goalkeeperProvider = context.watch<GoalkeeperProvider>();
+    final goleiros = goalkeeperProvider.goalkeepers;
+    final carregando = goalkeeperProvider.isLoading && goleiros.isEmpty;
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            child: _CabecalhoSecao(
+              titulo: 'Goleiros',
+              subtitulo:
+                  'Acompanhamento técnico individual, evolução e indicadores de desempenho',
+              acao: 'Novo Goleiro',
+              icone: Icons.sports_handball_outlined,
+              onAcao: _abrirFormularioNovoGoleiro,
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Goleiros cadastrados',
+              child: carregando
+                  ? const _MensagemSemDados(texto: 'Carregando goleiros')
+                  : goalkeeperProvider.errorMessage != null && goleiros.isEmpty
+                  ? _MensagemSemDados(texto: goalkeeperProvider.errorMessage!)
+                  : goleiros.isEmpty
+                  ? const _MensagemSemDados(
+                      texto: 'Nenhum goleiro cadastrado ainda',
+                    )
+                  : Column(
+                      children: [
+                        for (final goleiro in goleiros) ...[
+                          _LinhaGoleiro(goleiro: goleiro),
+                          if (goleiro != goleiros.last)
+                            const Divider(height: 24),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        ),
       ],
-      itens: [
-        _ItemSecao('Rafael Monteiro', 'GK 88 • destaque em reflexo'),
-        _ItemSecao('Bruna Alves', 'GK 85 • reposição acima da média'),
-        _ItemSecao('Caio Nascimento', 'GK 79 • evolução em cobertura'),
+    );
+  }
+}
+
+class _LinhaGoleiro extends StatelessWidget {
+  const _LinhaGoleiro({required this.goleiro});
+
+  final Goalkeeper goleiro;
+
+  @override
+  Widget build(BuildContext context) {
+    final detalhes = [
+      if ((goleiro.dominantHand ?? '').isNotEmpty)
+        'Mão dominante: ${goleiro.dominantHand}',
+      if (goleiro.heightCm != null) '${goleiro.heightCm} cm',
+      if (goleiro.weightKg != null) '${goleiro.weightKg} kg',
+    ].join(' • ');
+
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16251B),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(
+            Icons.sports_handball_outlined,
+            color: Color(0xFF55E08F),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                goleiro.name,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                detalhes.isEmpty ? 'Sem detalhes adicionais' : detalhes,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DialogNovoGoleiro extends StatefulWidget {
+  const _DialogNovoGoleiro({required this.clubes});
+
+  final List<Club> clubes;
+
+  @override
+  State<_DialogNovoGoleiro> createState() => _DialogNovoGoleiroState();
+}
+
+class _DialogNovoGoleiroState extends State<_DialogNovoGoleiro> {
+  final _formKey = GlobalKey<FormState>();
+  final _nomeController = TextEditingController();
+  final _alturaController = TextEditingController();
+  final _pesoController = TextEditingController();
+  String? _clubeId;
+  String? _maoDominante;
+  bool _salvando = false;
+  String? _erro;
+
+  @override
+  void dispose() {
+    _nomeController.dispose();
+    _alturaController.dispose();
+    _pesoController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _salvar() async {
+    final formValido = _formKey.currentState?.validate() ?? false;
+    if (!formValido || _clubeId == null) {
+      setState(() {
+        _erro = _clubeId == null ? 'Selecione um clube.' : null;
+      });
+      return;
+    }
+
+    setState(() {
+      _salvando = true;
+      _erro = null;
+    });
+
+    final goleiro = Goalkeeper(
+      id: '',
+      clubId: _clubeId!,
+      name: _nomeController.text.trim(),
+      dominantHand: _maoDominante,
+      heightCm: int.tryParse(_alturaController.text.trim()),
+      weightKg: double.tryParse(
+        _pesoController.text.trim().replaceAll(',', '.'),
+      ),
+    );
+
+    final sucesso = await context.read<GoalkeeperProvider>().createGoalkeeper(
+      goleiro,
+    );
+
+    if (!mounted) return;
+
+    if (sucesso) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _salvando = false;
+        _erro = 'Não foi possível cadastrar o goleiro. Tente novamente.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Novo Goleiro'),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _nomeController,
+                enabled: !_salvando,
+                decoration: const InputDecoration(labelText: 'Nome'),
+                validator: (value) => (value == null || value.trim().isEmpty)
+                    ? 'Informe o nome do goleiro.'
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: _clubeId,
+                decoration: const InputDecoration(labelText: 'Clube'),
+                items: widget.clubes
+                    .map(
+                      (clube) => DropdownMenuItem(
+                        value: clube.id,
+                        child: Text(clube.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _salvando
+                    ? null
+                    : (value) => setState(() => _clubeId = value),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: _maoDominante,
+                decoration: const InputDecoration(
+                  labelText: 'Mão dominante (opcional)',
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'Esquerda',
+                    child: Text('Esquerda'),
+                  ),
+                  DropdownMenuItem(value: 'Direita', child: Text('Direita')),
+                  DropdownMenuItem(
+                    value: 'Ambidestro',
+                    child: Text('Ambidestro'),
+                  ),
+                ],
+                onChanged: _salvando
+                    ? null
+                    : (value) => setState(() => _maoDominante = value),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _alturaController,
+                enabled: !_salvando,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Altura em cm (opcional)',
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _pesoController,
+                enabled: !_salvando,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Peso em kg (opcional)',
+                ),
+              ),
+              if (_erro != null) ...[
+                const SizedBox(height: 14),
+                Text(_erro!, style: const TextStyle(color: Color(0xFFFFB4AB))),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _salvando ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _salvando ? null : _salvar,
+          child: _salvando
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Salvar'),
+        ),
       ],
     );
   }
@@ -1467,12 +1783,14 @@ class _CabecalhoSecao extends StatelessWidget {
     required this.subtitulo,
     required this.acao,
     required this.icone,
+    this.onAcao,
   });
 
   final String titulo;
   final String subtitulo;
   final String acao;
   final IconData icone;
+  final VoidCallback? onAcao;
 
   @override
   Widget build(BuildContext context) {
@@ -1516,7 +1834,7 @@ class _CabecalhoSecao extends StatelessWidget {
           ],
         );
         final botao = FilledButton.icon(
-          onPressed: () {},
+          onPressed: onAcao ?? () {},
           icon: Icon(icone),
           label: Text(acao),
         );

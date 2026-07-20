@@ -32,6 +32,18 @@ class GoalkeeperRepository {
     }
   }
 
+  Future<List<Goalkeeper>> getAllGoalkeepers() async {
+    final response = await _apiClient.dio.get<List<dynamic>>(
+      '/api/v1/goalkeepers',
+    );
+
+    if (response.statusCode == 200) {
+      return response.data!.map((item) => Goalkeeper.fromJson(item)).toList();
+    } else {
+      throw Exception('Failed to fetch goalkeepers');
+    }
+  }
+
   Future<Goalkeeper> getGoalkeeperById(String gkId) async {
     final response = await _apiClient.dio.get<Map<String, dynamic>>(
       '/api/v1/goalkeepers/$gkId',

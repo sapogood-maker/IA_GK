@@ -14,6 +14,10 @@ class GoalkeeperService {
     return await _repository.getGoalkeepersByClubId(clubId);
   }
 
+  Future<List<Goalkeeper>> getAllGoalkeepers() async {
+    return await _repository.getAllGoalkeepers();
+  }
+
   Future<Goalkeeper> getGoalkeeperById(String gkId) async {
     return await _repository.getGoalkeeperById(gkId);
   }

@@ -94,6 +94,10 @@ class GoalkeeperRepository:
         result = await self.db.execute(select(Goalkeeper).where(Goalkeeper.club_id == club_id))
         return result.scalars().all()
 
+    async def get_all(self) -> list[Goalkeeper]:
+        result = await self.db.execute(select(Goalkeeper))
+        return result.scalars().all()
+
 
 class TrainingSessionRepository:
     def __init__(self, db: AsyncSession):

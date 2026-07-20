@@ -1,56 +1,63 @@
-# SPRINT_REPORT.md — Sprint 1 (Autenticação/autorização real nos endpoints)
+# SPRINT_REPORT.md — Sprint 2 (Goleiros funcional + Clubes mínimo)
 
-> Referência: `PROJECT_ANALYSIS.md`, seção 7.10, item 4 ("Adicionar autenticação/autorização em todos os endpoints de negócio").
+> Referência: `PROJECT_ANALYSIS.md`, roadmap Sprint 2, escopo reduzido combinado com o usuário (só Goleiros + leitura mínima de Clubes, em vez das 9 telas originais).
+> Motivação direta: usuário reportou, após logar, não conseguir cadastrar goleiros ("tem o campo para adicionar novo goleiro porém sem conseguir fazer nada").
 
 ## Objetivo
 
-Exigir um JWT válido (`Authorization: Bearer <token>`) em todos os endpoints de negócio do backend, que hoje estão publicamente acessíveis (achado 3.1 e 7.3 do `PROJECT_ANALYSIS.md`), sem alterar assinaturas de endpoints, nomes públicos ou o comportamento de `/auth/register`, `/auth/login` e `/auth/refresh` (que precisam continuar públicos).
+Tornar a tela "Goleiros" funcional de ponta a ponta: listar goleiros reais vindos da API e permitir cadastrar um novo goleiro de verdade pela UI, com um clube real selecionado. A tela de Clubes em si permanece com dados fictícios (fora do escopo combinado) — apenas a leitura de clubes por trás (para alimentar o formulário) é real.
 
-**Escopo decidido para esta sprint (comunicado antes de iniciar):** apenas **autenticação** (exigir um token válido). Autorização granular por papel/posse (ex.: um `coach` só ver goleiros do próprio clube) ficou **fora** — depende de regras de negócio ainda não definidas e mudaria queries em vários repositórios, o que é um escopo maior e mais arriscado do que o gap crítico atual (endpoints totalmente abertos). Registrado como pendência.
+## Problema identificado antes de implementar
 
-## Arquivos modificados
+Além da tela ser 100% estática, encontrei **dois bugs que impediriam o cadastro de funcionar mesmo ligando o botão**:
+1. Backend: `GET /api/v1/goalkeepers` sem `club_id` retornava `[]` fixo (achado 7.9 do `PROJECT_ANALYSIS.md`) — não dava para listar os goleiros existentes.
+2. Frontend: o model `Goalkeeper` (Dart) não tinha campo `club_id`, mas o backend exige `club_id` para criar um goleiro — o app nunca conseguiria montar um payload de criação válido.
+
+Ambos foram corrigidos como parte desta sprint, por serem bloqueadores diretos do objetivo.
+
+## Arquivos modificados/criados
 
 | Arquivo | Alteração |
 |---|---|
-| `backend_fastapi/app/core/security.py` | Recebeu a dependência `get_current_user` (movida de `auth.py`), com os imports necessários (`Depends`, `Header`, `HTTPException`, `status`, `AsyncSession`, `get_db`, `UserRepository`) |
-| `backend_fastapi/app/api/v1/auth.py` | Removida a definição local de `get_current_user`; agora importa de `app.core.security`; removidos os imports que só eram usados por ela (`Header`, `UUID`, `UserRepository`) |
-| `backend_fastapi/app/api/v1/users.py` | `router = APIRouter(..., dependencies=[Depends(get_current_user)])` |
-| `backend_fastapi/app/api/v1/clubs.py` | idem |
-| `backend_fastapi/app/api/v1/coaches.py` | idem |
-| `backend_fastapi/app/api/v1/goalkeepers.py` | idem |
-| `backend_fastapi/app/api/v1/training_sessions.py` | idem |
-| `backend_fastapi/app/api/v1/videos.py` | idem |
-| `backend_fastapi/app/api/v1/processing_jobs.py` | idem |
-| `backend_fastapi/app/api/v1/r2.py` | idem (inclui os endpoints de diagnóstico `/r2/health` e `/r2/test-upload`, que antes permitiam qualquer um acionar leitura/escrita real no bucket) |
-
-`backend_fastapi/app/api/v1/auth.py` **não** recebeu `dependencies` no nível do router — `/register`, `/login` e `/refresh` continuam públicos por definição (é como o cliente obtém o token); `/me` manteve seu próprio `Depends(get_current_user)` explícito, sem alteração de comportamento.
+| `backend_fastapi/app/repositories/repositories.py` | Adicionado `GoalkeeperRepository.get_all()` |
+| `backend_fastapi/app/api/v1/goalkeepers.py` | `list_goalkeepers` sem `club_id` agora chama `get_all()` em vez de retornar `[]` |
+| `frontend_flutter/lib/models/goalkeeper.dart` | Adicionado campo `clubId` (obrigatório), lido/escrito como `club_id` no JSON |
+| `frontend_flutter/lib/models/club.dart` **(novo)** | Model `Club` (id, name, city) |
+| `frontend_flutter/lib/repositories/club_repository.dart` **(novo)** | `getClubs()` — `GET /api/v1/clubs` |
+| `frontend_flutter/lib/repositories/goalkeeper_repository.dart` | Adicionado `getAllGoalkeepers()` — `GET /api/v1/goalkeepers` sem filtro |
+| `frontend_flutter/lib/services/goalkeeper_service.dart` | Adicionado `getAllGoalkeepers()` (repassa ao repository) |
+| `frontend_flutter/lib/providers/club_provider.dart` **(novo)** | Estado reativo de clubes (`clubs`, `isLoading`, `errorMessage`, `load()`) |
+| `frontend_flutter/lib/providers/goalkeeper_provider.dart` | Ganhou estado real (`goalkeepers`, `isLoading`, `errorMessage`, `loadAll()`); `createGoalkeeper` agora retorna `bool` e recarrega a lista após sucesso; removidos os `print()`/`rethrow` que geravam warnings de lint (pendência 4 da Sprint 0); métodos `getGoalkeepersByClubId`/`getGoalkeeperById` mantidos como estavam |
+| `frontend_flutter/lib/main.dart` | Registra `GoalkeeperProvider` e `ClubProvider` no `MultiProvider`; `GkPerformanceApp` ganha os dois novos parâmetros obrigatórios; `_CabecalhoSecao` ganha callback opcional `onAcao` (as outras 8 telas continuam com botão sem ação, comportamento inalterado); `GoleirosScreen` reescrita como `StatefulWidget` que carrega goleiros e clubes reais e abre um diálogo de cadastro (`_DialogNovoGoleiro`) com validação, estado de carregamento e tratamento de erro |
+| `frontend_flutter/test/widget_test.dart` | Atualizado para passar os dois novos providers obrigatórios ao `GkPerformanceApp` |
 
 ## Decisões arquiteturais
 
-- **`get_current_user` foi movido de `app/api/v1/auth.py` para `app/core/security.py`.** Antes, era uma função isolada usada só por `/me`; para reutilizá-la em 8 routers diferentes sem que eles dependessem de um módulo-irmão (`api.v1.auth`), o lugar natural é `core/security.py`, que já concentra a lógica de JWT (`decode_token`, `create_token`). Verifiquei a cadeia de imports (`core/security.py` → `db/base.py` → `core/config.py`; `core/security.py` → `repositories/repositories.py` → `models/models.py` → `db/base.py`) para confirmar que não há import circular.
-- **Proteção aplicada via `dependencies=[Depends(get_current_user)]` no `APIRouter`**, não como parâmetro de cada função de endpoint. Isso protege todas as rotas do arquivo com uma única linha, sem tocar em nenhuma assinatura de função existente — a menor mudança possível para resolver o problema, e o mesmo padrão repetido nos 8 arquivos (fácil de auditar).
-- **Nenhuma mudança no frontend foi necessária.** O `ApiClient` (corrigido na Sprint 0) já injeta `Authorization: Bearer <token>` em toda requisição via interceptor, então o fluxo login → painel continua funcionando sem alteração.
+- **`GoalkeeperProvider` foi ampliado, não recriado.** Era código morto (nunca registrado, com `print()` de erro) — os 3 métodos originais (`createGoalkeeper`, `getGoalkeepersByClubId`, `getGoalkeeperById`) tiveram assinatura preservada onde fazia sentido; só `createGoalkeeper` mudou de `Future<void>` para `Future<bool>`, porque a UI precisa saber se deu certo para fechar o diálogo ou mostrar erro — mudança necessária, não gratuita, já que o método nunca tinha sido usado por ninguém antes.
+- **`_CabecalhoSecao` ganhou um parâmetro opcional (`onAcao`), não foi duplicado.** As 8 telas estáticas restantes (Clubes, Vídeos, Análises, Sessões, Relatórios, Telegram, Usuários, Configurações) continuam chamando `_TelaSecao` exatamente como antes, sem passar `onAcao` — o botão delas continua sem ação, comportamento 100% preservado.
+- **Não criei fluxo de criação de Clube nem toquei na tela "Clubes"** — só a leitura (`ClubRepository.getClubs()`) foi implementada, estritamente para alimentar o dropdown do formulário de goleiro, conforme escopo combinado.
+- **Campo `notes` do model `Goalkeeper` não ganhou input no formulário** — o backend (model/schema/migration) não tem coluna `notes` na tabela `goalkeepers`; adicionar isso exigiria uma migration Alembic nova, fora do escopo desta sprint. Registrado como pendência.
+- **A tela "Goleiros" perdeu os cards de métricas fictícias** ("Goleiros ativos: 36", "GK Score médio: 82,4" etc.) que existiam no mockup — como não há dado real equivalente ainda (GK Score, alertas técnicos não existem no backend), optei por não substituir por números fictícios novos; a tela agora mostra só a lista real de goleiros. Fica como pendência futura calcular métricas reais quando fizer sentido.
 
 ## Testes/verificações executados
 
 | Verificação | Resultado |
 |---|---|
-| `python -m py_compile` em todos os módulos alterados e no restante de `app/` | **Sem erros de sintaxe** |
-| Verificação manual da cadeia de imports (busca por ciclos) | **Sem import circular** entre `core/security.py`, `db/base.py`, `repositories/repositories.py`, `models/models.py` |
-| Busca por referências antigas a `get_current_user` importado de `api.v1.auth` | **Nenhuma** — só era usado dentro do próprio `auth.py` |
-| Execução real do servidor (`uvicorn`) / testes de integração hitando os endpoints com e sem token | **Não executado** — tentei criar um venv isolado e instalar `requirements.txt` para rodar a app de verdade, mas a instalação falhou: `pydantic-core==2.5.0` (dependência do Pydantic 2.5) precisa compilar via Rust/maturin nesta máquina rodando **Python 3.14**, e o linker do MSVC falhou. O `Dockerfile` do projeto fixa `python:3.11-slim`; o ambiente local não tem 3.11 disponível. Isso é uma limitação pré-existente do ambiente, não relacionada a esta mudança — fica registrado como pendência de verificação (ideal rodar via `docker compose up` para confirmar em runtime) |
-| Testes automatizados de backend | Não há suíte (`tests/` só tem `__init__.py`, achado já registrado no `PROJECT_ANALYSIS.md`) |
-| Frontend (`flutter analyze` / `flutter test`) | Não re-executado nesta sprint — nenhum arquivo Dart foi tocado |
+| `flutter analyze` | **0 erros, 0 avisos** (corrigi 2 avisos de `unnecessary_cast` que apareceram no meu próprio código antes do ajuste final) |
+| `flutter test` | **1/1 passou** |
+| `flutter build web --release` | **Build concluído com sucesso** |
+| `python -m py_compile` em todo `backend_fastapi/app/` | **Sem erros de sintaxe** |
+| Execução real do backend (subir servidor e testar `POST /api/v1/goalkeepers` de ponta a ponta) | **Não executado** — mesma limitação de ambiente já registrada na Sprint 1 (Python 3.14 local vs. dependências do projeto pinadas para 3.11; `pydantic-core` não compila aqui). Recomendo validar via `docker compose up` |
 
 ## Pendências
 
-1. **Verificação em runtime real** (subir `docker compose up` e testar com `curl`/Postman que rotas de negócio agora retornam `401` sem token e `200` com token válido) — recomendo antes de considerar esta sprint "fechada" em produção, já que não consegui rodar a aplicação localmente pela limitação de ambiente (Python 3.14 vs. dependências pinadas para 3.11).
-2. **Autorização granular por papel/posse** (ex.: coach só vê goleiros do próprio clube; endpoints de escrita restritos a papéis específicos) — decisão de escopo explicada acima, fica para uma sprint futura, após definição das regras de negócio por papel.
-3. Endpoints de refresh token continuam sem rotação (achado 7.5 do `PROJECT_ANALYSIS.md`) — não fazia parte do escopo desta sprint.
+1. **Validar em runtime real** (via Docker) o fluxo completo: login → abrir "Goleiros" → "Novo Goleiro" → selecionar clube → salvar → ver o goleiro na lista.
+2. Se ainda não existir nenhum clube cadastrado no banco, o formulário vai mostrar o aviso "Cadastre um clube antes de adicionar um goleiro" — hoje só é possível criar um clube via API diretamente (`POST /api/v1/clubs`), já que a tela de Clubes continua estática. Isso deve ser resolvido quando a tela de Clubes for conectada de verdade (próxima sprint candidata).
+3. Campo `notes` do goleiro sem suporte no backend (sem coluna/migration) — não exposto no formulário.
+4. Sem métricas reais na tela de Goleiros (métricas fictícias removidas, nada substituiu ainda).
 
 ## Próximos passos sugeridos
 
-1. Validar esta sprint subindo o ambiente via Docker (`docker compose up` em `backend_fastapi/`) e confirmando manualmente os códigos de resposta 401/200.
-2. Seguir para a **Sprint 2 — Conectar as telas do Flutter à API** (Clubes, Goleiros, Vídeos, Sessões de Treino, upload de vídeo pela UI), já que o backend agora exige autenticação e o `ApiClient` já está corrigido para propagá-la.
+Testar manualmente o fluxo (crie ao menos um clube via `POST /api/v1/clubs` para conseguir testar o cadastro de goleiro pela UI). Depois, sugiro como próxima sprint conectar a tela de **Clubes** (listar + criar clube de verdade), o que também resolve a pendência 2 acima.
 
 Aguardando sua aprovação para a próxima sprint.
