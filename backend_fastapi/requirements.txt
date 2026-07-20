@@ -3,14 +3,19 @@ uvicorn[standard]==0.24.0
 sqlalchemy==2.0.23
 alembic==1.13.0
 email-validator>=2.1.0
+# psycopg (v3): usado apenas pelo Alembic para migracoes com Engine sincrono
+# (ver alembic/env.py). Nao remover mesmo que pareca redundante com asyncpg.
 psycopg[binary]==3.3.4
+# asyncpg: driver assincrono usado pela aplicacao em runtime (AsyncEngine).
 asyncpg==0.30.0
 
 pydantic==2.5.0
 pydantic-settings==2.1.0
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
 boto3==1.28.85
+# bcrypt fixado em 4.0.1: passlib 1.7.4 detecta a versao do bcrypt via
+# bcrypt.__about__.__version__, removido a partir do bcrypt 4.1.0. Nao
+# atualizar o bcrypt sem atualizar/trocar o passlib junto.
 bcrypt==4.0.1
 passlib[bcrypt]==1.7.4

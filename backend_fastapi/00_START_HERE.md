@@ -185,7 +185,7 @@ uvicorn app.main:app --reload --port 8001
 ```bash
 docker build -t goalkeeper-ai:0.1.0 .
 docker run \
-  -e DATABASE_URL=postgresql://... \
+  -e DATABASE_URL=postgresql+asyncpg://... \
   -e JWT_SECRET_KEY=your-secret \
   -p 8001:8001 \
   goalkeeper-ai:0.1.0

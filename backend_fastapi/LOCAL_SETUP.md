@@ -36,7 +36,7 @@ cp .env.example .env
 
 # Edit .env with your PostgreSQL credentials
 # Example for local PostgreSQL:
-# DATABASE_URL=postgresql://username:password@localhost:5432/goalkeeper_ai
+# DATABASE_URL=postgresql+asyncpg://username:password@localhost:5432/goalkeeper_ai
 ```
 
 ### Step 4: Database Setup

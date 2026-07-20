@@ -15,8 +15,8 @@
 ### Development / Docker Compose
 
 ```bash
-# PostgreSQL Database
-postgresql://goalkeeper_user:goalkeeper_pass@localhost:5432/goalkeeper_ai
+# PostgreSQL Database (DATABASE_URL usado pela app - driver assincrono)
+postgresql+asyncpg://goalkeeper_user:goalkeeper_pass@localhost:5432/goalkeeper_ai
 
 # FastAPI Backend (Sprint 1)
 http://localhost:8001

@@ -14,9 +14,26 @@ if config.config_file_name is not None:
 target_metadata = None
 
 
+def _sync_database_url() -> str:
+    """Deriva uma URL de conexao sincrona a partir de DATABASE_URL.
+
+    A aplicacao usa DATABASE_URL com o driver assincrono (postgresql+asyncpg)
+    para o SQLAlchemy AsyncEngine em runtime, mas o Alembic roda migracoes
+    com um Engine sincrono (engine_from_config) - asyncpg nao funciona nesse
+    modo. Aqui trocamos o driver por "psycopg" (psycopg 3, ja usado como
+    dependencia do projeto), que suporta conexao sincrona normalmente.
+    """
+    url = os.getenv("DATABASE_URL", "")
+    if url.startswith("postgresql+asyncpg://"):
+        return "postgresql+psycopg://" + url[len("postgresql+asyncpg://"):]
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    return url
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = os.getenv("DATABASE_URL")
+    url = _sync_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -30,8 +47,8 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    url = os.getenv("DATABASE_URL")
-    
+    url = _sync_database_url()
+
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = url
 

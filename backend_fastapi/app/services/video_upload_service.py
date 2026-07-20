@@ -36,8 +36,8 @@ class VideoUploadService:
         
         # Check file extension
         file_ext = Path(file.filename).suffix.lower().lstrip(".")
-        if file_ext not in self.settings.allowed_video_extensions:
-            return False, f"Invalid file extension. Allowed: {', '.join(self.settings.allowed_video_extensions)}"
+        if file_ext not in self.settings.allowed_video_extensions_list:
+            return False, f"Invalid file extension. Allowed: {', '.join(self.settings.allowed_video_extensions_list)}"
         
         # Check MIME type
         if file.content_type and not file.content_type.startswith("video/"):
