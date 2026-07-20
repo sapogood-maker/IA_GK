@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -13,6 +14,16 @@ from app.repositories.repositories import UserRepository
 settings = get_settings()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Esquema Bearer padrao do FastAPI: registra o security scheme no OpenAPI
+# para que o Swagger exiba o cadeado e o botao "Authorize" funcione em
+# todos os endpoints protegidos, sem exigir um header manual por rota.
+# auto_error=False para preservar a mensagem/status originais (401) quando
+# o header estiver ausente ou malformado, tratados explicitamente abaixo.
+bearer_scheme = HTTPBearer(
+    auto_error=False,
+    description="Informe o access_token obtido em POST /api/v1/auth/login",
+)
 
 
 class TokenData(BaseModel):
@@ -57,16 +68,18 @@ def decode_token(token: str) -> Optional[TokenData]:
         return None
 
 
-async def get_current_user(authorization: str = Header(...), db: AsyncSession = Depends(get_db)):
-    """Dependency to extract and validate JWT from Authorization header."""
-    if not authorization or not authorization.startswith("Bearer "):
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dependency to extract and validate JWT via the OAuth2/Bearer scheme."""
+    if credentials is None or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid authorization header"
         )
 
-    token = authorization.split(" ")[1]
-    token_data = decode_token(token)
+    token_data = decode_token(credentials.credentials)
 
     if not token_data:
         raise HTTPException(
