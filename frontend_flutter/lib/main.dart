@@ -3,16 +3,24 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:file_picker/file_picker.dart';
+
 import 'models/club.dart';
 import 'models/goalkeeper.dart';
+import 'models/training_session.dart';
+import 'models/video.dart';
 import 'providers/auth_provider.dart';
 import 'providers/club_provider.dart';
 import 'providers/dashboard_provider.dart';
 import 'providers/goalkeeper_provider.dart';
+import 'providers/training_session_provider.dart';
+import 'providers/video_provider.dart';
 import 'repositories/auth_repository.dart';
 import 'repositories/club_repository.dart';
 import 'repositories/dashboard_repository.dart';
 import 'repositories/goalkeeper_repository.dart';
+import 'repositories/training_session_repository.dart';
+import 'repositories/video_repository.dart';
 import 'services/api_client.dart';
 import 'services/goalkeeper_service.dart';
 import 'services/session_service.dart';
@@ -28,6 +36,8 @@ Future<void> main() async {
   final goalkeeperRepository = GoalkeeperRepository(apiClient);
   final goalkeeperService = GoalkeeperService(goalkeeperRepository);
   final clubRepository = ClubRepository(apiClient);
+  final trainingSessionRepository = TrainingSessionRepository(apiClient);
+  final videoRepository = VideoRepository(apiClient);
   final authProvider = AuthProvider(authRepository, sessionService);
 
   await authProvider.initialize();
@@ -38,6 +48,10 @@ Future<void> main() async {
       dashboardProvider: DashboardProvider(dashboardRepository),
       goalkeeperProvider: GoalkeeperProvider(goalkeeperService),
       clubProvider: ClubProvider(clubRepository),
+      trainingSessionProvider: TrainingSessionProvider(
+        trainingSessionRepository,
+      ),
+      videoProvider: VideoProvider(videoRepository),
     ),
   );
 }
@@ -137,12 +151,16 @@ class GkPerformanceApp extends StatelessWidget {
     required this.dashboardProvider,
     required this.goalkeeperProvider,
     required this.clubProvider,
+    required this.trainingSessionProvider,
+    required this.videoProvider,
   });
 
   final AuthProvider authProvider;
   final DashboardProvider dashboardProvider;
   final GoalkeeperProvider goalkeeperProvider;
   final ClubProvider clubProvider;
+  final TrainingSessionProvider trainingSessionProvider;
+  final VideoProvider videoProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -157,6 +175,10 @@ class GkPerformanceApp extends StatelessWidget {
           value: goalkeeperProvider,
         ),
         ChangeNotifierProvider<ClubProvider>.value(value: clubProvider),
+        ChangeNotifierProvider<TrainingSessionProvider>.value(
+          value: trainingSessionProvider,
+        ),
+        ChangeNotifierProvider<VideoProvider>.value(value: videoProvider),
       ],
       child: Builder(
         builder: (context) {
@@ -1751,28 +1773,414 @@ class _DialogNovoGoleiroState extends State<_DialogNovoGoleiro> {
   }
 }
 
-class VideosScreen extends StatelessWidget {
+class VideosScreen extends StatefulWidget {
   const VideosScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const _TelaSecao(
-      titulo: 'Vídeos',
-      subtitulo: 'Envios, processamento por IA e organização do acervo técnico',
-      acao: 'Enviar Vídeo',
-      icone: Icons.videocam_outlined,
-      metricas: [
-        _MetricaSecao('Vídeos enviados', '128', 'Total disponível'),
-        _MetricaSecao('Processando', '17', 'Na fila da IA'),
-        _MetricaSecao('Com erro', '2', 'Exigem revisão'),
-      ],
-      itens: [
-        _ItemSecao(
-          'Treino de reflexo - Rafael',
-          'Concluído • 18 eventos detectados',
+  State<VideosScreen> createState() => _VideosScreenState();
+}
+
+class _VideosScreenState extends State<VideosScreen> {
+  String? _clubeId;
+  String? _goleiroId;
+  String? _sessaoId;
+
+  List<Goalkeeper> _goleirosDoClube = [];
+  List<TrainingSession> _sessoesDoGoleiro = [];
+  bool _carregandoGoleiros = false;
+  bool _carregandoSessoes = false;
+
+  PlatformFile? _arquivoSelecionado;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ClubProvider>().load();
+      }
+    });
+  }
+
+  void _limparSelecao() {
+    setState(() {
+      _clubeId = null;
+      _goleiroId = null;
+      _sessaoId = null;
+      _goleirosDoClube = [];
+      _sessoesDoGoleiro = [];
+      _arquivoSelecionado = null;
+    });
+  }
+
+  Future<void> _selecionarClube(String? clubeId) async {
+    setState(() {
+      _clubeId = clubeId;
+      _goleiroId = null;
+      _sessaoId = null;
+      _goleirosDoClube = [];
+      _sessoesDoGoleiro = [];
+      _arquivoSelecionado = null;
+    });
+
+    if (clubeId == null) return;
+
+    setState(() => _carregandoGoleiros = true);
+    try {
+      final goleiros = await context
+          .read<GoalkeeperProvider>()
+          .getGoalkeepersByClubId(clubeId);
+      if (mounted) {
+        setState(() => _goleirosDoClube = goleiros);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível carregar os goleiros do clube.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _carregandoGoleiros = false);
+      }
+    }
+  }
+
+  Future<void> _selecionarGoleiro(String? goleiroId) async {
+    setState(() {
+      _goleiroId = goleiroId;
+      _sessaoId = null;
+      _sessoesDoGoleiro = [];
+      _arquivoSelecionado = null;
+    });
+
+    if (goleiroId == null) return;
+
+    setState(() => _carregandoSessoes = true);
+    try {
+      final sessoes = await context
+          .read<TrainingSessionProvider>()
+          .getSessionsByGoalkeeperId(goleiroId);
+      if (mounted) {
+        setState(() => _sessoesDoGoleiro = sessoes);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível carregar as sessões do goleiro.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _carregandoSessoes = false);
+      }
+    }
+  }
+
+  void _selecionarSessao(String? sessaoId) {
+    setState(() {
+      _sessaoId = sessaoId;
+      _arquivoSelecionado = null;
+    });
+
+    if (sessaoId != null) {
+      context.read<VideoProvider>().loadBySession(sessaoId);
+    }
+  }
+
+  Future<void> _selecionarArquivo() async {
+    final resultado = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['mp4', 'mov', 'avi', 'mkv'],
+      withData: true,
+    );
+
+    if (resultado == null || resultado.files.isEmpty) return;
+
+    setState(() => _arquivoSelecionado = resultado.files.single);
+  }
+
+  Future<void> _enviarVideo() async {
+    final arquivo = _arquivoSelecionado;
+    final sessaoId = _sessaoId;
+
+    if (arquivo == null || sessaoId == null || arquivo.bytes == null) {
+      return;
+    }
+
+    final videoProvider = context.read<VideoProvider>();
+    final sucesso = await videoProvider.uploadVideo(
+      trainingSessionId: sessaoId,
+      filename: arquivo.name,
+      bytes: arquivo.bytes!,
+    );
+
+    if (!mounted) return;
+
+    if (sucesso) {
+      setState(() => _arquivoSelecionado = null);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Vídeo enviado com sucesso.')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            videoProvider.uploadError ?? 'Não foi possível enviar o vídeo.',
+          ),
         ),
-        _ItemSecao('Cruzamentos - Bruna', 'Processando • 64%'),
-        _ItemSecao('Jogo-treino - Caio', 'Aguardando IA • enviado hoje'),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final clubProvider = context.watch<ClubProvider>();
+    final videoProvider = context.watch<VideoProvider>();
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            child: _CabecalhoSecao(
+              titulo: 'Vídeos',
+              subtitulo:
+                  'Envios, processamento por IA e organização do acervo técnico',
+              acao: 'Limpar seleção',
+              icone: Icons.videocam_outlined,
+              onAcao: _limparSelecao,
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Selecionar destino do vídeo',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: _clubeId,
+                    decoration: const InputDecoration(labelText: 'Clube'),
+                    items: clubProvider.clubs
+                        .map(
+                          (clube) => DropdownMenuItem(
+                            value: clube.id,
+                            child: Text(clube.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _selecionarClube,
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: _goleiroId,
+                    decoration: InputDecoration(
+                      labelText: 'Goleiro',
+                      helperText: _carregandoGoleiros
+                          ? 'Carregando goleiros...'
+                          : null,
+                    ),
+                    items: _goleirosDoClube
+                        .map(
+                          (goleiro) => DropdownMenuItem(
+                            value: goleiro.id,
+                            child: Text(goleiro.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _clubeId == null ? null : _selecionarGoleiro,
+                  ),
+                  const SizedBox(height: 14),
+                  DropdownButtonFormField<String>(
+                    initialValue: _sessaoId,
+                    decoration: InputDecoration(
+                      labelText: 'Sessão de treino',
+                      helperText: _carregandoSessoes
+                          ? 'Carregando sessões...'
+                          : null,
+                    ),
+                    items: _sessoesDoGoleiro
+                        .map(
+                          (sessao) => DropdownMenuItem(
+                            value: sessao.id,
+                            child: Text(sessao.title),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _goleiroId == null ? null : _selecionarSessao,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Enviar vídeo',
+              child: _sessaoId == null
+                  ? const _MensagemSemDados(
+                      texto:
+                          'Selecione uma sessão de treino para enviar um vídeo.',
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _arquivoSelecionado?.name ??
+                                    'Nenhum arquivo selecionado',
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            OutlinedButton.icon(
+                              onPressed: videoProvider.isUploading
+                                  ? null
+                                  : _selecionarArquivo,
+                              icon: const Icon(Icons.attach_file),
+                              label: const Text('Selecionar arquivo'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        FilledButton.icon(
+                          onPressed:
+                              (_arquivoSelecionado == null ||
+                                  videoProvider.isUploading)
+                              ? null
+                              : _enviarVideo,
+                          icon: const Icon(Icons.cloud_upload_outlined),
+                          label: Text(
+                            videoProvider.isUploading
+                                ? 'Enviando...'
+                                : 'Enviar Vídeo',
+                          ),
+                        ),
+                        if (videoProvider.isUploading) ...[
+                          const SizedBox(height: 14),
+                          LinearProgressIndicator(
+                            value: videoProvider.uploadProgress,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${(videoProvider.uploadProgress * 100).toStringAsFixed(0)}%',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: const Color(0xFF9CAEA2)),
+                          ),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Vídeos da sessão selecionada',
+              child: _sessaoId == null
+                  ? const _MensagemSemDados(
+                      texto: 'Selecione uma sessão para ver os vídeos enviados.',
+                    )
+                  : videoProvider.isLoading && videoProvider.videos.isEmpty
+                  ? const _MensagemSemDados(texto: 'Carregando vídeos')
+                  : videoProvider.errorMessage != null &&
+                        videoProvider.videos.isEmpty
+                  ? _MensagemSemDados(texto: videoProvider.errorMessage!)
+                  : videoProvider.videos.isEmpty
+                  ? const _MensagemSemDados(
+                      texto: 'Nenhum vídeo enviado nesta sessão ainda',
+                    )
+                  : Column(
+                      children: [
+                        for (final video in videoProvider.videos) ...[
+                          _LinhaVideo(video: video),
+                          if (video != videoProvider.videos.last)
+                            const Divider(height: 24),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _rotuloStatusVideo(Video video) {
+  final jobStatus = video.jobStatus;
+  if (jobStatus == 'RUNNING') return 'Em processamento';
+  if (jobStatus == 'COMPLETED' || video.uploadStatus == 'COMPLETED') {
+    return 'Concluído';
+  }
+  if (jobStatus == 'FAILED' || video.uploadStatus == 'FAILED') return 'Falha';
+  if (jobStatus == 'PENDING') return 'Aguardando processamento';
+  if (video.uploadStatus == 'UPLOADED') return 'No R2';
+  return 'Enviado';
+}
+
+class _LinhaVideo extends StatelessWidget {
+  const _LinhaVideo({required this.video});
+
+  final Video video;
+
+  @override
+  Widget build(BuildContext context) {
+    final tamanhoMb = video.fileSizeBytes != null
+        ? '${(video.fileSizeBytes! / (1024 * 1024)).toStringAsFixed(1)} MB'
+        : null;
+
+    return Row(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16251B),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(
+            Icons.videocam_outlined,
+            color: Color(0xFF55E08F),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                video.originalFilename ?? video.filename,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                tamanhoMb ?? 'Tamanho não informado',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 14),
+        _Etiqueta(texto: _rotuloStatusVideo(video)),
       ],
     );
   }
@@ -1803,26 +2211,351 @@ class AnalisesScreen extends StatelessWidget {
   }
 }
 
-class SessoesTreinoScreen extends StatelessWidget {
+class SessoesTreinoScreen extends StatefulWidget {
   const SessoesTreinoScreen({super.key});
 
   @override
+  State<SessoesTreinoScreen> createState() => _SessoesTreinoScreenState();
+}
+
+class _SessoesTreinoScreenState extends State<SessoesTreinoScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<TrainingSessionProvider>().loadAll();
+        context.read<GoalkeeperProvider>().loadAll();
+      }
+    });
+  }
+
+  Future<void> _abrirFormularioNovaSessao() async {
+    final goleiros = context.read<GoalkeeperProvider>().goalkeepers;
+
+    if (goleiros.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cadastre um goleiro antes de criar uma sessão.'),
+        ),
+      );
+      return;
+    }
+
+    final criado = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DialogNovaSessao(goleiros: goleiros),
+    );
+
+    if (criado == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sessão de treino criada com sucesso.')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const _TelaSecao(
-      titulo: 'Sessões de Treino',
-      subtitulo:
-          'Planejamento e histórico de treinos orientados por dados de desempenho',
-      acao: 'Nova Sessão',
-      icone: Icons.event_note_outlined,
-      metricas: [
-        _MetricaSecao('Sessões agendadas', '18', 'Próximos 7 dias'),
-        _MetricaSecao('Sessões concluídas', '63', 'No mês atual'),
-        _MetricaSecao('Focos técnicos', '7', 'Fundamentos monitorados'),
+    final sessionProvider = context.watch<TrainingSessionProvider>();
+    final goalkeeperProvider = context.watch<GoalkeeperProvider>();
+    final sessoes = sessionProvider.sessions;
+    final carregando = sessionProvider.isLoading && sessoes.isEmpty;
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            child: _CabecalhoSecao(
+              titulo: 'Sessões de Treino',
+              subtitulo:
+                  'Planejamento e histórico de treinos orientados por dados de desempenho',
+              acao: 'Nova Sessão',
+              icone: Icons.event_note_outlined,
+              onAcao: _abrirFormularioNovaSessao,
+            ),
+          ),
+        ),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Sessões cadastradas',
+              child: carregando
+                  ? const _MensagemSemDados(texto: 'Carregando sessões')
+                  : sessionProvider.errorMessage != null && sessoes.isEmpty
+                  ? _MensagemSemDados(texto: sessionProvider.errorMessage!)
+                  : sessoes.isEmpty
+                  ? const _MensagemSemDados(
+                      texto: 'Nenhuma sessão de treino cadastrada ainda',
+                    )
+                  : Column(
+                      children: [
+                        for (final sessao in sessoes) ...[
+                          _LinhaSessao(
+                            sessao: sessao,
+                            nomeGoleiro: _nomeGoleiro(
+                              goalkeeperProvider.goalkeepers,
+                              sessao.goalkeeperId,
+                            ),
+                          ),
+                          if (sessao != sessoes.last)
+                            const Divider(height: 24),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        ),
       ],
-      itens: [
-        _ItemSecao('Treino de reflexo', 'Hoje, 09:30 • Rafael Monteiro'),
-        _ItemSecao('Cruzamentos laterais', 'Ontem, 16:10 • Bruna Alves'),
-        _ItemSecao('Saída curta com pés', '08/06, 14:00 • Caio Nascimento'),
+    );
+  }
+
+  String _nomeGoleiro(List<Goalkeeper> goleiros, String goalkeeperId) {
+    for (final goleiro in goleiros) {
+      if (goleiro.id == goalkeeperId) {
+        return goleiro.name;
+      }
+    }
+    return 'Goleiro não identificado';
+  }
+}
+
+class _LinhaSessao extends StatelessWidget {
+  const _LinhaSessao({required this.sessao, required this.nomeGoleiro});
+
+  final TrainingSession sessao;
+  final String nomeGoleiro;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = sessao.sessionDate;
+    final dataFormatada =
+        '${data.day.toString().padLeft(2, '0')}/'
+        '${data.month.toString().padLeft(2, '0')}/${data.year}';
+
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16251B),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(
+            Icons.event_note_outlined,
+            color: Color(0xFF55E08F),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                sessao.title,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${sessao.sessionType} • $nomeGoleiro • $dataFormatada',
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DialogNovaSessao extends StatefulWidget {
+  const _DialogNovaSessao({required this.goleiros});
+
+  final List<Goalkeeper> goleiros;
+
+  @override
+  State<_DialogNovaSessao> createState() => _DialogNovaSessaoState();
+}
+
+class _DialogNovaSessaoState extends State<_DialogNovaSessao> {
+  final _formKey = GlobalKey<FormState>();
+  final _tituloController = TextEditingController();
+  final _tipoController = TextEditingController();
+  final _notasController = TextEditingController();
+  String? _goleiroId;
+  DateTime? _data;
+  bool _salvando = false;
+  String? _erro;
+
+  @override
+  void dispose() {
+    _tituloController.dispose();
+    _tipoController.dispose();
+    _notasController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selecionarData() async {
+    final agora = DateTime.now();
+    final selecionada = await showDatePicker(
+      context: context,
+      initialDate: _data ?? agora,
+      firstDate: DateTime(agora.year - 2),
+      lastDate: DateTime(agora.year + 2),
+    );
+
+    if (selecionada != null) {
+      setState(() => _data = selecionada);
+    }
+  }
+
+  Future<void> _salvar() async {
+    final formValido = _formKey.currentState?.validate() ?? false;
+
+    if (!formValido || _goleiroId == null || _data == null) {
+      setState(() {
+        _erro = _goleiroId == null
+            ? 'Selecione um goleiro.'
+            : _data == null
+            ? 'Selecione a data da sessão.'
+            : null;
+      });
+      return;
+    }
+
+    setState(() {
+      _salvando = true;
+      _erro = null;
+    });
+
+    final sessao = TrainingSession(
+      id: '',
+      goalkeeperId: _goleiroId!,
+      title: _tituloController.text.trim(),
+      sessionType: _tipoController.text.trim(),
+      sessionDate: _data!,
+      notes: _notasController.text.trim().isEmpty
+          ? null
+          : _notasController.text.trim(),
+    );
+
+    final sucesso = await context
+        .read<TrainingSessionProvider>()
+        .createSession(sessao);
+
+    if (!mounted) return;
+
+    if (sucesso) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _salvando = false;
+        _erro = 'Não foi possível criar a sessão. Tente novamente.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nova Sessão de Treino'),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _tituloController,
+                enabled: !_salvando,
+                decoration: const InputDecoration(labelText: 'Título'),
+                validator: (value) => (value == null || value.trim().isEmpty)
+                    ? 'Informe o título da sessão.'
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _tipoController,
+                enabled: !_salvando,
+                decoration: const InputDecoration(
+                  labelText: 'Tipo de sessão',
+                  hintText: 'Ex.: Treino técnico, Jogo-treino...',
+                ),
+                validator: (value) => (value == null || value.trim().isEmpty)
+                    ? 'Informe o tipo de sessão.'
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: _goleiroId,
+                decoration: const InputDecoration(labelText: 'Goleiro'),
+                items: widget.goleiros
+                    .map(
+                      (goleiro) => DropdownMenuItem(
+                        value: goleiro.id,
+                        child: Text(goleiro.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _salvando
+                    ? null
+                    : (value) => setState(() => _goleiroId = value),
+              ),
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: _salvando ? null : _selecionarData,
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Data da sessão',
+                  ),
+                  child: Text(
+                    _data == null
+                        ? 'Selecionar data'
+                        : '${_data!.day.toString().padLeft(2, '0')}/'
+                              '${_data!.month.toString().padLeft(2, '0')}/${_data!.year}',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _notasController,
+                enabled: !_salvando,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Notas (opcional)',
+                ),
+              ),
+              if (_erro != null) ...[
+                const SizedBox(height: 14),
+                Text(_erro!, style: const TextStyle(color: Color(0xFFFFB4AB))),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _salvando ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _salvando ? null : _salvar,
+          child: _salvando
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Salvar'),
+        ),
       ],
     );
   }

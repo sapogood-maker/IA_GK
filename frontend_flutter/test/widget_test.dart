@@ -8,10 +8,14 @@ import 'package:frontend_flutter/providers/auth_provider.dart';
 import 'package:frontend_flutter/providers/club_provider.dart';
 import 'package:frontend_flutter/providers/dashboard_provider.dart';
 import 'package:frontend_flutter/providers/goalkeeper_provider.dart';
+import 'package:frontend_flutter/providers/training_session_provider.dart';
+import 'package:frontend_flutter/providers/video_provider.dart';
 import 'package:frontend_flutter/repositories/auth_repository.dart';
 import 'package:frontend_flutter/repositories/club_repository.dart';
 import 'package:frontend_flutter/repositories/dashboard_repository.dart';
 import 'package:frontend_flutter/repositories/goalkeeper_repository.dart';
+import 'package:frontend_flutter/repositories/training_session_repository.dart';
+import 'package:frontend_flutter/repositories/video_repository.dart';
 import 'package:frontend_flutter/services/api_client.dart';
 import 'package:frontend_flutter/services/goalkeeper_service.dart';
 import 'package:frontend_flutter/services/session_service.dart';
@@ -39,6 +43,10 @@ void main() {
           GoalkeeperService(GoalkeeperRepository(apiClient)),
         ),
         clubProvider: ClubProvider(ClubRepository(apiClient)),
+        trainingSessionProvider: TrainingSessionProvider(
+          TrainingSessionRepository(apiClient),
+        ),
+        videoProvider: VideoProvider(VideoRepository(apiClient)),
       ),
     );
     await tester.pumpAndSettle();
