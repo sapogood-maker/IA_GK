@@ -1,1 +1,6 @@
 .aider*
+
+# Environment files (contain secrets — never commit)
+.env
+.env.*
+!.env.example

@@ -4,8 +4,9 @@ from uuid import UUID
 from app.db.base import get_db
 from app.schemas.schemas import UserResponse
 from app.repositories.repositories import UserRepository
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/v1/users", tags=["users"])
+router = APIRouter(prefix="/api/v1/users", tags=["users"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[UserResponse])

@@ -4,8 +4,9 @@ from uuid import UUID
 from app.db.base import get_db
 from app.schemas.schemas import TrainingSessionCreate, TrainingSessionResponse, TrainingSessionUpdate
 from app.repositories.repositories import TrainingSessionRepository, GoalkeeperRepository, CoachRepository
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/v1/training-sessions", tags=["training-sessions"])
+router = APIRouter(prefix="/api/v1/training-sessions", tags=["training-sessions"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("", response_model=TrainingSessionResponse, status_code=status.HTTP_201_CREATED)

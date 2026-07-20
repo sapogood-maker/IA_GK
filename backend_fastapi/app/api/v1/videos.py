@@ -10,8 +10,9 @@ from app.schemas.schemas import (
 )
 from app.repositories.repositories import VideoRepository, TrainingSessionRepository, ProcessingJobRepository
 from app.services.video_upload_service import VideoUploadService
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/v1/videos", tags=["videos"])
+router = APIRouter(prefix="/api/v1/videos", tags=["videos"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/upload", response_model=VideoUploadResponse, status_code=status.HTTP_201_CREATED)

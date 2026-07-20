@@ -7,8 +7,9 @@ from app.schemas.schemas import (
     ProcessingJobStatusResponse
 )
 from app.repositories.repositories import ProcessingJobRepository, VideoRepository
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/v1/processing-jobs", tags=["processing-jobs"])
+router = APIRouter(prefix="/api/v1/processing-jobs", tags=["processing-jobs"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("", response_model=ProcessingJobResponse, status_code=status.HTTP_201_CREATED)

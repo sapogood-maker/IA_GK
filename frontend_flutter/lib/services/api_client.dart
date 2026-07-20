@@ -1,5 +1,8 @@
 import 'package:dio/dio.dart';
-import 'core/api_config.dart';
+
+import '../core/api_config.dart';
+import '../models/auth_tokens.dart';
+import 'session_service.dart';
 
 class ApiClient {
   ApiClient(this._sessionService) {
@@ -23,7 +26,9 @@ class ApiClient {
   }
 
   final SessionService _sessionService;
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(BaseOptions(baseUrl: ApiConfig.baseUrl));
+
+  Dio get dio => _dio;
 
   Future<bool> _refreshToken() async {
     final refreshToken = _sessionService.refreshToken;

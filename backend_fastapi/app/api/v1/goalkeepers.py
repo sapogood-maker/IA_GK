@@ -4,8 +4,9 @@ from uuid import UUID
 from app.db.base import get_db
 from app.schemas.schemas import GoalkeeperCreate, GoalkeeperResponse
 from app.repositories.repositories import GoalkeeperRepository
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/v1/goalkeepers", tags=["goalkeepers"])
+router = APIRouter(prefix="/api/v1/goalkeepers", tags=["goalkeepers"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("", response_model=GoalkeeperResponse, status_code=status.HTTP_201_CREATED)
