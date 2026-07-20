@@ -9,6 +9,10 @@ class Club {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {'name': name, 'city': city};
+  }
+
   final String id;
   final String name;
   final String? city;

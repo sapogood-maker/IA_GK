@@ -17,4 +17,17 @@ class ClubRepository {
       throw Exception('Failed to fetch clubs');
     }
   }
+
+  Future<Club> createClub(Club club) async {
+    final response = await _apiClient.dio.post<Map<String, dynamic>>(
+      '/api/v1/clubs',
+      data: club.toJson(),
+    );
+
+    if (response.statusCode == 201) {
+      return Club.fromJson(response.data!);
+    } else {
+      throw Exception('Failed to create club');
+    }
+  }
 }

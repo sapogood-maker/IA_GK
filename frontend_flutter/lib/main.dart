@@ -1194,29 +1194,237 @@ class _EnvioRapido extends StatelessWidget {
   }
 }
 
-class ClubesScreen extends StatelessWidget {
+class ClubesScreen extends StatefulWidget {
   const ClubesScreen({super.key});
 
   @override
+  State<ClubesScreen> createState() => _ClubesScreenState();
+}
+
+class _ClubesScreenState extends State<ClubesScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<ClubProvider>().load();
+      }
+    });
+  }
+
+  Future<void> _abrirFormularioNovoClube() async {
+    final criado = await showDialog<bool>(
+      context: context,
+      builder: (_) => const _DialogNovoClube(),
+    );
+
+    if (criado == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Clube cadastrado com sucesso.')),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const _TelaSecao(
-      titulo: 'Clubes',
-      subtitulo:
-          'Gestão dos clubes atendidos pela plataforma de análise de goleiros',
-      acao: 'Novo Clube',
-      icone: Icons.shield_outlined,
-      metricas: [
-        _MetricaSecao('Clubes ativos', '12', 'Base e profissional'),
-        _MetricaSecao('Goleiros vinculados', '36', 'Com monitoramento ativo'),
-        _MetricaSecao('Vídeos no mês', '74', 'Enviados pelos clubes'),
-      ],
-      itens: [
-        _ItemSecao(
-          'São Paulo FC Sub-20',
-          '8 goleiros • 24 análises concluídas',
+    final clubProvider = context.watch<ClubProvider>();
+    final clubes = clubProvider.clubs;
+    final carregando = clubProvider.isLoading && clubes.isEmpty;
+
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+            child: _CabecalhoSecao(
+              titulo: 'Clubes',
+              subtitulo:
+                  'Gestão dos clubes atendidos pela plataforma de análise de goleiros',
+              acao: 'Novo Clube',
+              icone: Icons.shield_outlined,
+              onAcao: _abrirFormularioNovoClube,
+            ),
+          ),
         ),
-        _ItemSecao('Palmeiras Base', '6 goleiros • 18 vídeos processados'),
-        _ItemSecao('Santos FC Feminino', '4 goleiras • 12 relatórios emitidos'),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+          sliver: SliverToBoxAdapter(
+            child: _Bloco(
+              titulo: 'Clubes cadastrados',
+              child: carregando
+                  ? const _MensagemSemDados(texto: 'Carregando clubes')
+                  : clubProvider.errorMessage != null && clubes.isEmpty
+                  ? _MensagemSemDados(texto: clubProvider.errorMessage!)
+                  : clubes.isEmpty
+                  ? const _MensagemSemDados(
+                      texto: 'Nenhum clube cadastrado ainda',
+                    )
+                  : Column(
+                      children: [
+                        for (final clube in clubes) ...[
+                          _LinhaClube(clube: clube),
+                          if (clube != clubes.last) const Divider(height: 24),
+                        ],
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LinhaClube extends StatelessWidget {
+  const _LinhaClube({required this.clube});
+
+  final Club clube;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 46,
+          height: 46,
+          decoration: BoxDecoration(
+            color: const Color(0xFF16251B),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.shield_outlined, color: Color(0xFF55E08F)),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                clube.name,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                (clube.city == null || clube.city!.isEmpty)
+                    ? 'Cidade não informada'
+                    : clube.city!,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DialogNovoClube extends StatefulWidget {
+  const _DialogNovoClube();
+
+  @override
+  State<_DialogNovoClube> createState() => _DialogNovoClubeState();
+}
+
+class _DialogNovoClubeState extends State<_DialogNovoClube> {
+  final _formKey = GlobalKey<FormState>();
+  final _nomeController = TextEditingController();
+  final _cidadeController = TextEditingController();
+  bool _salvando = false;
+  String? _erro;
+
+  @override
+  void dispose() {
+    _nomeController.dispose();
+    _cidadeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _salvar() async {
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
+    setState(() {
+      _salvando = true;
+      _erro = null;
+    });
+
+    final clube = Club(
+      id: '',
+      name: _nomeController.text.trim(),
+      city: _cidadeController.text.trim().isEmpty
+          ? null
+          : _cidadeController.text.trim(),
+    );
+
+    final sucesso = await context.read<ClubProvider>().createClub(clube);
+
+    if (!mounted) return;
+
+    if (sucesso) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() {
+        _salvando = false;
+        _erro = 'Não foi possível cadastrar o clube. Tente novamente.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Novo Clube'),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _nomeController,
+                enabled: !_salvando,
+                decoration: const InputDecoration(labelText: 'Nome do clube'),
+                validator: (value) => (value == null || value.trim().isEmpty)
+                    ? 'Informe o nome do clube.'
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _cidadeController,
+                enabled: !_salvando,
+                decoration: const InputDecoration(
+                  labelText: 'Cidade (opcional)',
+                ),
+              ),
+              if (_erro != null) ...[
+                const SizedBox(height: 14),
+                Text(_erro!, style: const TextStyle(color: Color(0xFFFFB4AB))),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _salvando ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _salvando ? null : _salvar,
+          child: _salvando
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Salvar'),
+        ),
       ],
     );
   }

@@ -30,4 +30,16 @@ class ClubProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<bool> createClub(Club club) async {
+    try {
+      await _repository.createClub(club);
+      await load();
+      return true;
+    } catch (_) {
+      _errorMessage = 'Não foi possível cadastrar o clube.';
+      notifyListeners();
+      return false;
+    }
+  }
 }
