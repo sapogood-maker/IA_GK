@@ -48,6 +48,10 @@ Por isso, a sequência abaixo agrupa por **assunto/entrega**, não por um recort
 | 4 | `docs: revisao arquitetural pos-W2` | `ARCHITECTURE_REVIEW_W2.md` |
 | 5 | `feat(worker): Sprint W2.1 - alinhamento arquitetural` | `worker/{orchestrator,pipeline,state,workspace,events}/__init__.py`, `tests/infrastructure/test_redis_connection_errors.py`, `W2_1_REPORT.md` |
 
-Note que o commit 1 necessariamente já contém o conteúdo final (pós-W2.1) da Constituição — não existe uma versão anterior recuperável. Se preferir, alternativa mais simples: um único commit "Sprints W1+W2+W2.1: fundacao completa do Goalkeeper AI Worker" — mais honesto sobre o fato de que não há histórico incremental real por trás, ao custo de menos granularidade.
+## Decisão final: commit único, sem reconstrução de histórico
 
-**Ainda não executei nenhum `git add`/`commit`.** Confirme qual das duas opções prefere (5 commits agrupados por assunto, ou 1 único commit consolidado) antes que eu rode qualquer comando de git.
+Você escolheu a opção de commit único consolidado, explicitamente rejeitando qualquer tentativa de reconstruir um histórico incremental que nunca existiu de fato.
+
+**O histórico oficial do Goalkeeper AI Worker começa no commit `f651f90` — `feat(worker): bootstrap Goalkeeper AI Worker` — por decisão deliberada, não por limitação técnica escondida.** Esse commit representa o primeiro estado oficialmente validado do projeto: fundação (W1), camada de comunicação (W2), sincronização arquitetural (W2.1), Architecture Review aprovada, Boundary Enforcement validado, 29/29 testes passando. Está marcado com a tag anotada `worker-v0.1.0-bootstrap`.
+
+Não existe, e não foi criado artificialmente, nenhum commit anterior "representando" a W1 ou a W2 isoladamente — a granularidade real daquelas sprints só existe nesta conversa e nos relatórios (`SPRINT_W2_REPORT.md`, `ARCHITECTURE_REVIEW_W2.md`, este documento), não no grafo do Git. A partir deste marco, toda nova sprint (a começar pela W3) passa a gerar commits próprios, incrementais, no fluxo normal.
