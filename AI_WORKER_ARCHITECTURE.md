@@ -53,6 +53,16 @@ Igual ao definido nas seções 1 e 12 originais: o backend continua sendo o úni
 
 ---
 
+## Atualização — Decisão de Monorepo (pós-Sprint 7, pré-Sprint W1)
+
+A recomendação de repositório separado (Seção 8, original) foi **revogada**. `IA_GK` passa a ser tratado oficialmente como **monorepo**: um único Git, dois produtos independentes — `backend_fastapi`/`frontend_flutter` de um lado, `goalkeeper_ai_worker/` do outro.
+
+Nenhuma responsabilidade de componente muda. A independência do Worker (nunca acessar o banco diretamente, nunca compartilhar código Python/runtime/dependências, comunicação exclusiva via API + Redis + R2) continua obrigatória — agora imposta como **regra arquitetural explícita**, não mais pela separação física de repositórios. Qualquer `import` entre `backend_fastapi/` e `goalkeeper_ai_worker/`, em qualquer direção, é considerado violação arquitetural.
+
+Decisão completa, com contexto, alternativas consideradas e trade-offs, registrada como **ADR-009** em `AI_WORKER_CONSTITUTION.md`.
+
+---
+
 ## 1. Arquitetura geral do sistema
 
 Componentes e como conversam entre si:
@@ -168,9 +178,13 @@ Aqui é importante separar duas necessidades diferentes de comunicação:
 | **Mesmo repositório** (monorepo) | Mais fácil manter o contrato de API sincronizado entre backend e worker (uma mudança que afeta os dois pode ir num só PR); um clone só; todo o histórico de decisão (este documento incluído) já vive num lugar só | O worker tem uma stack de dependências totalmente diferente (visão computacional, modelos, possivelmente CUDA/ROCm) — misturar isso com as dependências leves do backend infla o repositório e complica a configuração de ambiente; ciclos de release diferentes (o worker pode evoluir num ritmo bem diferente do backend) ficam artificialmente acoplados |
 | **Repositório separado** | Isola completamente o ciclo de vida, dependências e deploy do worker; reforça, também no nível organizacional, a premissa de que o worker é "totalmente independente"; mais fácil de restringir acesso no futuro (se alguém só mexer em IA, não precisa nem ver o código do backend/frontend) | Contratos de API que mudam nos dois lados precisam ser coordenados entre dois PRs/repositórios; configuração inicial duplicada (lint, README, etc.) |
 
-### Recomendação: **repositório separado** (ex.: `goalkeeper-ai-worker`), na mesma organização/conta Git do projeto atual.
+### Recomendação (REVISADA — ver "Atualização — Decisão de Monorepo" no topo do documento): **monorepo**, com `goalkeeper_ai_worker/` como pasta de topo dentro do mesmo repositório Git de `IA_GK`.
 
-**⚠️ Mudança proposta em relação ao que já está documentado:** `docs_folder_structure.md` sugere manter `ai_worker/` como uma pasta dentro do mesmo monorepo (com uma nota reconhecendo que "manter como repositório separado também é uma opção válida"). Given que você definiu explicitamente que a IA "será um serviço totalmente independente" e rodará numa máquina completamente separada, recomendo formalizar isso também como repositório separado — evita a tentação natural de "já que está tudo no mesmo lugar, deixa eu só importar direto" (seja um módulo Python, seja acesso a arquivo/banco), e mantém a pasta `ai_worker/` do repositório atual livre para virar, no máximo, um `README.md` curto apontando para o novo repositório.
+~~Recomendação original desta seção: repositório separado (`goalkeeper-ai-worker`), na mesma organização/conta Git do projeto atual.~~ **Revogada.** Após avaliar o fluxo real de desenvolvimento, o monorepo foi adotado por preservar contexto entre sessões, facilitar revisões arquiteturais completas do sistema e evitar a sobrecarga de coordenar dois repositórios/PRs para mudanças que afetam o contrato entre backend e Worker. A tabela de comparação acima permanece como registro histórico do raciocínio original — os argumentos a favor de repositório separado continuam válidos em abstrato, só deixaram de ser os que pesam mais para este projeto. A decisão revisada, com alternativas e trade-offs completos, está registrada como **ADR-009** em `AI_WORKER_CONSTITUTION.md`.
+
+**⚠️ Nota histórica (mantida para contexto):** `docs_folder_structure.md` (documento pré-existente, de 8 de junho) já sugeria manter `ai_worker/` como pasta dentro do mesmo monorepo — a primeira versão desta seção divergiu disso recomendando repositório separado; esta revisão volta à ideia original de `docs_folder_structure.md`, agora formalizada como decisão oficial (ADR-009) com a barreira de independência tratada como regra arquitetural explícita em vez de física.
+
+Nenhuma responsabilidade de componente muda: o Worker continua sendo tratado como se estivesse em outro repositório — runtime, dependências, código Python e lógica de negócio nunca são compartilhados com o backend, independentemente de os dois residirem no mesmo Git.
 
 ---
 
@@ -283,7 +297,7 @@ Abordagem (arquitetura, não implementação):
 | Autenticação do Worker | API Key + escopo de "service account" restrito a endpoints de job |
 | Acesso ao banco de dados | Somente via API — nunca acesso direto ao PostgreSQL |
 | Acesso ao Cloudflare R2 | Somente via URLs assinadas de curta duração, geradas pelo Backend sob demanda |
-| Estrutura de repositório | Repositório separado (`goalkeeper-ai-worker`) |
+| Estrutura de repositório | Monorepo — pasta `goalkeeper_ai_worker/` dentro do mesmo repositório `IA_GK`, com independência total de runtime/dependências/código Python (ADR-009, revisão da recomendação original desta tabela) |
 | Monitoramento | Prometheus + Grafana, com heartbeat simples de workers desde o início |
 
 ---
