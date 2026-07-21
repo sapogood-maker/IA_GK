@@ -10,6 +10,49 @@ Onde esta proposta diverge do que já estava esboçado em `docs_ai_worker_spec.m
 
 ---
 
+## Atualização — Sprint 7 (infraestrutura implementada)
+
+A partir desta sprint, as seções abaixo deixam de ser só design e passam a refletir código real, testado e em execução. Nenhuma linha de IA (YOLO/OpenCV/tracking/inferência) foi criada — só a infraestrutura que o Worker vai consumir.
+
+### Autenticação do Worker (Seção 6) — implementada
+
+- Header `X-Worker-Api-Key`, validado contra `WORKER_API_KEY` (variável de ambiente/`Settings`) em `app/core/worker_auth.py`.
+- **Fail-closed**: se `WORKER_API_KEY` não estiver configurado, nenhuma chave é aceita.
+- Mecanismo **completamente separado** do JWT humano — confirmado por teste automatizado: um JWT válido não funciona nos endpoints do Worker, e a API Key não funciona nos endpoints humanos.
+- Ainda não implementado (fica para quando houver mais de uma máquina): múltiplas chaves, uma por worker/máquina, com revogação individual. Hoje é um único segredo compartilhado.
+
+### Endpoints do Worker (Seção 3, novo) — implementados, sem processamento
+
+Todos sob `/api/v1/worker`, exigindo `X-Worker-Api-Key`:
+
+| Endpoint | Uso |
+|---|---|
+| `GET /api/v1/worker/jobs/{job_id}` | Detalhes do job (video_id, status, progresso, tentativas) |
+| `PUT /api/v1/worker/jobs/{job_id}/status` | Reporta progresso, conclusão (`status=COMPLETED`) ou falha (`status=FAILED`+`error_message`) — um único endpoint em vez de três, marca `started_at`/`completed_at` automaticamente nas transições relevantes |
+| `POST /api/v1/worker/jobs/{job_id}/download-url` | URL assinada (R2, leitura) do vídeo original do job |
+| `POST /api/v1/worker/jobs/{job_id}/artifacts/upload-url` | URL assinada (R2, escrita) para um artefato, com `r2_key` já escopado por vídeo/job |
+
+**Deliberadamente fora desta sprint**: um endpoint para o Worker submeter os *resultados* da análise (linhas em `Analysis`/`Event`/`Metric`) — isso depende de inferência real existir primeiro, e não estava na lista de exemplos pedida. Ver "pendência" na resposta final do `SPRINT7_REPORT.md`.
+
+### URLs assinadas (Seção 11) — implementadas
+
+- `R2Service.generate_presigned_url` (leitura, já existia) e `generate_presigned_upload_url` (escrita, novo nesta sprint).
+- Expirações **configuráveis e separadas**: `WORKER_DOWNLOAD_URL_EXPIRATION_SECONDS` e `WORKER_UPLOAD_URL_EXPIRATION_SECONDS` (`Settings`, padrão 3600s/1h cada).
+- Artefatos recebem uma chave R2 previsível e isolada por job: `artifacts/{video_id}/{job_id}/{filename}`.
+
+### Fila (Seção 4) — Redis Streams, só publisher
+
+- `app/core/queue.py`: cliente Redis (`redis.asyncio`), stream `processing_jobs`, função `publish_processing_job(job_id, video_id)`.
+- Publicado automaticamente em `VideoUploadService.upload_video`, logo após o `ProcessingJob` ser criado. Falha de publicação é só logada — não interrompe o upload (o arquivo já está salvo no R2 e o registro no banco existe).
+- **Nenhum consumer/consumer group existe** — o futuro Worker cria o seu próprio ao iniciar (`XGROUP CREATE`), sem exigir nenhuma mudança no backend.
+- Diagnóstico simples (sem Prometheus): `GET /api/v1/queue/health` (humano, `SYSTEM_ADMIN` via JWT — não é um endpoint do Worker) retorna conectividade e tamanho do stream.
+
+### Responsabilidades do backend (confirmação)
+
+Igual ao definido nas seções 1 e 12 originais: o backend continua sendo o único a ter as credenciais mestras do R2 e o único a escrever no Postgres. O Worker, quando existir, só vai falar com o backend via os 4 endpoints acima — nunca direto com o banco ou com credenciais R2 próprias.
+
+---
+
 ## 1. Arquitetura geral do sistema
 
 Componentes e como conversam entre si:

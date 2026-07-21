@@ -240,3 +240,45 @@ class VideoStatusResponse(BaseModel):
     job_status: Optional[str] = None
     progress: Optional[float] = None
     r2_url: Optional[str] = None
+
+
+# --- AI Worker Schemas (ver app/api/v1/worker.py) ---
+
+class WorkerJobStatusUpdate(BaseModel):
+    """Corpo do PUT /api/v1/worker/jobs/{job_id}/status - cobre reportar
+    progresso, concluir (status=COMPLETED) e registrar falha
+    (status=FAILED + error_message) num unico endpoint, evitando 3
+    endpoints quase identicos."""
+    status: str
+    progress: Optional[float] = None
+    error_message: Optional[str] = None
+    worker_id: Optional[str] = None
+
+
+class PresignedUrlResponse(BaseModel):
+    """Resposta de uma URL assinada de download (sempre para o r2_key ja
+    existente do video do job)."""
+    url: str
+    expires_in_seconds: int
+
+
+class ArtifactUploadUrlRequest(BaseModel):
+    """Corpo do POST /api/v1/worker/jobs/{job_id}/artifacts/upload-url."""
+    filename: str
+    content_type: str = "application/octet-stream"
+
+
+class ArtifactUploadUrlResponse(BaseModel):
+    """Resposta de uma URL assinada de upload - inclui o r2_key gerado,
+    que o worker deve devolver depois ao registrar o artefato."""
+    url: str
+    r2_key: str
+    expires_in_seconds: int
+
+
+class QueueHealthResponse(BaseModel):
+    """Diagnostico simples da fila Redis (sem Prometheus - ver
+    app/core/queue.py)."""
+    connected: bool
+    stream: str
+    stream_length: Optional[int] = None

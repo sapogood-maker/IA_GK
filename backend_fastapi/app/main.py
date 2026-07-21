@@ -1,8 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import auth, users, clubs, coaches, goalkeepers, training_sessions, videos, processing_jobs, r2
+from app.api.v1 import auth, users, clubs, coaches, goalkeepers, training_sessions, videos, processing_jobs, r2, worker
 from app.core.config import get_settings
 import logging
+
+# Sem isso, o nivel padrao do logger raiz do Python (WARNING) descarta
+# silenciosamente TODO logger.info(...) do projeto - inclusive os logs
+# estruturados de publicacao na fila (app/core/queue.py) e de upload
+# (video_upload_service.py). Achado real durante a validacao da Sprint 7
+# (nenhum logger.info aparecia no `docker logs`, desde o inicio do
+# projeto) - ver SPRINT7_REPORT.md.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +40,8 @@ app.include_router(training_sessions.router)
 app.include_router(videos.router)
 app.include_router(processing_jobs.router)
 app.include_router(r2.router)
+app.include_router(worker.router)
+app.include_router(worker.admin_router)
 
 
 @app.on_event("startup")

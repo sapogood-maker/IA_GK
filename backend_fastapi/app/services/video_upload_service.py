@@ -9,6 +9,7 @@ from app.core.r2 import R2Service
 from app.core.config import get_settings
 from app.repositories.repositories import VideoRepository, ProcessingJobRepository, TrainingSessionRepository
 from app.models.models import UploadStatus, ProcessingJobStatus
+from app.core.queue import publish_processing_job
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +144,14 @@ class VideoUploadService:
                 status=ProcessingJobStatus.QUEUED.value,
                 progress=0.0
             )
-            
+
+            # Publica o job na fila (Redis Stream) para o futuro AI Worker
+            # consumir. Nenhum consumer existe ainda - so publicacao (ver
+            # AI_WORKER_ARCHITECTURE.md secao 4/5, SPRINT7_REPORT.md).
+            # Uma falha aqui e so logada, nao interrompe o upload: o
+            # arquivo ja esta salvo no R2 e o registro no banco existe.
+            await publish_processing_job(str(job.id), str(video.id))
+
             # Clean up temp file
             if os.path.exists(temp_path):
                 os.remove(temp_path)

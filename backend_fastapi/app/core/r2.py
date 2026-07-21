@@ -284,7 +284,48 @@ class R2Service:
         except Exception as e:
             logger.error(f"Unexpected error generating presigned URL: {e}")
             return None
-    
+
+    async def generate_presigned_upload_url(
+        self, r2_key: str, expiration_seconds: int = 3600, content_type: str = "application/octet-stream"
+    ) -> str | None:
+        """
+        Generate a presigned URL for uploading (PUT) a file to R2.
+
+        Usado pelo AI Worker para subir artefatos (thumbnails, clipes) sem
+        nunca receber as credenciais mestras do R2 - ver
+        AI_WORKER_ARCHITECTURE.md secao 11.
+
+        Args:
+            r2_key: R2 object key (path in bucket)
+            expiration_seconds: URL expiration time in seconds
+            content_type: Content-Type que o cliente devera enviar no PUT
+
+        Returns:
+            Presigned URL or None if error
+        """
+        if not self.s3_client:
+            logger.error("R2 client not initialized")
+            return None
+
+        try:
+            url = self.s3_client.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": self.settings.r2_bucket_name,
+                    "Key": r2_key,
+                    "ContentType": content_type,
+                },
+                ExpiresIn=expiration_seconds
+            )
+            return url
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code", "Unknown")
+            logger.error(f"Error generating presigned upload URL ({error_code}): {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error generating presigned upload URL: {e}")
+            return None
+
     async def file_exists(self, r2_key: str) -> bool:
         """
         Check if a file exists in R2.

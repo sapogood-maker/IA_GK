@@ -29,6 +29,24 @@ class Settings(BaseSettings):
     # `allowed_video_extensions_list` para obter a lista processada.
     allowed_video_extensions: str = "mp4,mov,avi,mkv"
 
+    # --- AI Worker: autenticacao de servico (ver app/core/worker_auth.py) ---
+    # Segredo compartilhado enviado pelo Worker no header X-Worker-Api-Key.
+    # Mecanismo completamente separado do JWT de usuario humano - ver
+    # AI_WORKER_ARCHITECTURE.md secao 6 e SPRINT7_REPORT.md. Vazio por
+    # padrao: enquanto nao configurado, nenhum request de worker e aceito
+    # (fail-closed).
+    worker_api_key: str = ""
+
+    # --- AI Worker: URLs assinadas do R2 (ver app/api/v1/worker.py) ---
+    # Expiracoes separadas para download (video original, pode ser grande e
+    # demorar mais) e upload (artefatos gerados pelo worker).
+    worker_download_url_expiration_seconds: int = 3600
+    worker_upload_url_expiration_seconds: int = 3600
+
+    # --- AI Worker: fila de processamento (Redis Streams) ---
+    # So publisher nesta sprint - nenhum consumer ainda (ver SPRINT7_REPORT.md).
+    redis_url: str = "redis://localhost:6379/0"
+
     class Config:
         env_file = ".env"
         case_sensitive = False

@@ -16,6 +16,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # Fila de processamento (Redis Streams) - so infraestrutura e publisher
+  # nesta sprint (ver app/core/queue.py). Nenhum consumer ainda; o AI
+  # Worker sera quem consome, futuramente, num servico/repositorio proprio.
+  redis:
+    image: redis:7-alpine
+    container_name: goalkeeper_ai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: .
     container_name: goalkeeper_ai_backend
@@ -26,10 +42,17 @@ services:
       JWT_EXPIRATION_MINUTES: 30
       REFRESH_TOKEN_EXPIRATION_DAYS: 7
       ENV: development
+      REDIS_URL: redis://redis:6379/0
+      # Trocar por um segredo forte proprio antes de usar em producao -
+      # e a unica credencial que o futuro AI Worker vai usar (ver
+      # app/core/worker_auth.py).
+      WORKER_API_KEY: dev-worker-api-key-change-in-production
     ports:
       - "8001:8001"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - .:/app
@@ -50,3 +73,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

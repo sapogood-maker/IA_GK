@@ -20,12 +20,15 @@ os.environ.setdefault(
 )
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-automated-tests-32-chars-long")
 os.environ.setdefault("ENV", "test")
+os.environ.setdefault("WORKER_API_KEY", "test-worker-api-key-for-automated-tests")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6380/0")
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
+from app.core.queue import get_redis_client  # noqa: E402
 from app.db.base import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -56,6 +59,16 @@ async def _reset_schema():
     yield
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _reset_redis():
+    """Limpa o Redis de teste antes de cada teste - mesmo principio do
+    _reset_schema, para os testes de fila (app/core/queue.py) nao
+    interferirem uns nos outros."""
+    client = get_redis_client()
+    await client.flushdb()
+    yield
+
+
 @pytest_asyncio.fixture
 async def client():
     async def _override_get_db():
@@ -71,6 +84,10 @@ async def client():
 
 def auth_header(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
+
+
+def worker_auth_header() -> dict:
+    return {"X-Worker-Api-Key": os.environ["WORKER_API_KEY"]}
 
 
 async def register_user(client, email, password="senha123", name="Usuario Teste", role=None, club_id=None):
