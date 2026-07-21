@@ -1,7 +1,5 @@
 import boto3
 import logging
-import io
-import tempfile
 from botocore.exceptions import ClientError, NoCredentialsError, PartialCredentialsError
 from app.core.config import get_settings
 
@@ -91,7 +89,7 @@ class R2Service:
             raise R2ValidationError("R2 client not initialized. Check credentials.")
         
         try:
-            response = self.s3_client.head_bucket(Bucket=self.settings.r2_bucket_name)
+            self.s3_client.head_bucket(Bucket=self.settings.r2_bucket_name)
             return {
                 "bucket": self.settings.r2_bucket_name,
                 "exists": True,
@@ -218,7 +216,7 @@ class R2Service:
             error_code = e.response.get("Error", {}).get("Code", "Unknown")
             logger.error(f"Error uploading to R2 ({error_code}): {e}")
             return False
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             logger.error(f"File not found: {file_path}")
             return False
         except Exception as e:

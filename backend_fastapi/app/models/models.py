@@ -53,7 +53,10 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name = Column(String, nullable=False)
-    email = Column(String, unique=True, nullable=False, index=True)
+    # unique=True ja cria um indice implicito; nao adicionar index=True aqui
+    # (gerava um segundo indice redundante sobre a mesma coluna - ver
+    # migration 005 e SPRINT6_REPORT.md).
+    email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
     role = Column(String, nullable=False, default=UserRole.TREINADOR.value)
     # Tenant do usuario. Nulo somente para SYSTEM_ADMIN (acesso a todos os

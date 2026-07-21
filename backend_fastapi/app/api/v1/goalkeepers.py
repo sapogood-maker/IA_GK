@@ -5,10 +5,15 @@ from app.db.base import get_db
 from app.schemas.schemas import GoalkeeperCreate, GoalkeeperResponse
 from app.repositories.repositories import GoalkeeperRepository
 from app.core.security import get_current_user
-from app.core.authorization import is_admin, effective_club_scope
+from app.core.authorization import is_admin, effective_club_scope, COMMON_ERROR_RESPONSES
 from app.models.models import User
 
-router = APIRouter(prefix="/api/v1/goalkeepers", tags=["goalkeepers"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/api/v1/goalkeepers",
+    tags=["goalkeepers"],
+    dependencies=[Depends(get_current_user)],
+    responses=COMMON_ERROR_RESPONSES,
+)
 
 
 @router.post("", response_model=GoalkeeperResponse, status_code=status.HTTP_201_CREATED)

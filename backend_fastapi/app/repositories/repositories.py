@@ -281,7 +281,14 @@ class ProcessingJobRepository:
         return result.scalar_one_or_none()
 
     async def get_by_video_id(self, video_id: UUID) -> list[ProcessingJob]:
-        result = await self.db.execute(select(ProcessingJob).where(ProcessingJob.video_id == video_id))
+        # Ordenado do mais recente para o mais antigo: VideoUploadService.
+        # get_video_status assume que o primeiro item da lista e o job atual
+        # do video. Sem ORDER BY, o Postgres nao garante nenhuma ordem.
+        result = await self.db.execute(
+            select(ProcessingJob)
+            .where(ProcessingJob.video_id == video_id)
+            .order_by(ProcessingJob.created_at.desc())
+        )
         return result.scalars().all()
 
     async def get_by_status(self, status: str) -> list[ProcessingJob]:

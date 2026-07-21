@@ -28,8 +28,10 @@ bearer_scheme = HTTPBearer(
 
 class TokenData(BaseModel):
     user_id: str
-    email: str
-    role: str
+    # Tokens de refresh carregam so o user_id (ver AuthService) - email/role
+    # sao preenchidos apenas quando presentes no payload (tokens de acesso).
+    email: Optional[str] = None
+    role: Optional[str] = None
     exp: Optional[datetime] = None
 
 
@@ -57,13 +59,19 @@ def decode_token(token: str) -> Optional[TokenData]:
     try:
         payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         user_id: str = payload.get("user_id")
-        email: str = payload.get("email")
-        role: str = payload.get("role", "viewer")
 
-        if user_id is None or email is None:
+        # user_id e o unico claim obrigatorio em qualquer token (de acesso
+        # ou de refresh). Exigir "email" aqui quebrava /auth/refresh, cujo
+        # token so carrega user_id - achado real via testes automatizados
+        # (ver SPRINT6_REPORT.md).
+        if user_id is None:
             return None
 
-        return TokenData(user_id=user_id, email=email, role=role)
+        return TokenData(
+            user_id=user_id,
+            email=payload.get("email"),
+            role=payload.get("role"),
+        )
     except JWTError:
         return None
 

@@ -1,10 +1,23 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import timedelta
-from app.repositories.repositories import UserRepository, ClubRepository, CoachRepository, GoalkeeperRepository
+from app.repositories.repositories import UserRepository, ClubRepository
 from app.core.security import hash_password, verify_password, create_token, decode_token
 from app.schemas.schemas import UserCreate, TokenResponse
 from app.models.models import UserRole
+
+
+def _create_refresh_token(user_id) -> str:
+    """Refresh token dedicado: so carrega user_id + um "jti" (JWT ID)
+    aleatorio. O jti garante que cada emissao seja unica mesmo se o "exp"
+    (truncado ao segundo) coincidir entre duas chamadas rapidas - sem ele,
+    a rotacao em refresh_access_token podia emitir um token byte-a-byte
+    identico ao anterior (achado via testes automatizados, ver
+    SPRINT6_REPORT.md)."""
+    return create_token(
+        {"user_id": str(user_id), "jti": str(uuid4())},
+        expires_delta=timedelta(days=7),
+    )
 
 
 class AuthService:
@@ -68,12 +81,9 @@ class AuthService:
             "email": user.email,
             "role": user.role
         })
-        
-        refresh_token = create_token(
-            {"user_id": str(user.id)},
-            expires_delta=timedelta(days=7)
-        )
-        
+
+        refresh_token = _create_refresh_token(user.id)
+
         return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
     async def login(self, email: str, password: str) -> TokenResponse:
@@ -86,27 +96,31 @@ class AuthService:
             "email": user.email,
             "role": user.role
         })
-        
-        refresh_token = create_token(
-            {"user_id": str(user.id)},
-            expires_delta=timedelta(days=7)
-        )
-        
+
+        refresh_token = _create_refresh_token(user.id)
+
         return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
     async def refresh_access_token(self, refresh_token: str) -> TokenResponse:
         token_data = decode_token(refresh_token)
         if not token_data:
             raise ValueError("Invalid refresh token")
-        
+
         user = await self.user_repo.get_by_id(UUID(token_data.user_id))
         if not user:
             raise ValueError("User not found")
-        
+
         access_token = create_token({
             "user_id": str(user.id),
             "email": user.email,
             "role": user.role
         })
-        
-        return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+        # Rotaciona o refresh token (emite um novo a cada uso) em vez de
+        # devolver o mesmo - reduz a janela de uso de um token vazado.
+        # Nao ha revogacao server-side (JWT e stateless; um blacklist
+        # exigiria armazenamento persistente, fora do escopo desta sprint -
+        # ver SPRINT6_REPORT.md).
+        new_refresh_token = _create_refresh_token(user.id)
+
+        return TokenResponse(access_token=access_token, refresh_token=new_refresh_token)

@@ -5,10 +5,15 @@ from app.db.base import get_db
 from app.schemas.schemas import ClubCreate, ClubResponse
 from app.repositories.repositories import ClubRepository
 from app.core.security import get_current_user
-from app.core.authorization import require_roles, is_admin
+from app.core.authorization import require_roles, is_admin, COMMON_ERROR_RESPONSES
 from app.models.models import User, UserRole
 
-router = APIRouter(prefix="/api/v1/clubs", tags=["clubs"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/api/v1/clubs",
+    tags=["clubs"],
+    dependencies=[Depends(get_current_user)],
+    responses=COMMON_ERROR_RESPONSES,
+)
 
 
 @router.post(

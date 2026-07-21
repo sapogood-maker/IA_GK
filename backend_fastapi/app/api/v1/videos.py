@@ -6,15 +6,19 @@ from app.core.r2 import get_r2_service, R2Service
 from app.schemas.schemas import (
     VideoCreate, VideoResponse, VideoUpdate,
     VideoUploadResponse, VideoStatusResponse,
-    ProcessingJobStatusResponse
 )
-from app.repositories.repositories import VideoRepository, TrainingSessionRepository, ProcessingJobRepository
+from app.repositories.repositories import VideoRepository, TrainingSessionRepository
 from app.services.video_upload_service import VideoUploadService
 from app.core.security import get_current_user
-from app.core.authorization import is_admin, effective_club_scope, resolve_club_id_for_training_session, resolve_club_id_for_video
+from app.core.authorization import is_admin, effective_club_scope, resolve_club_id_for_training_session, resolve_club_id_for_video, COMMON_ERROR_RESPONSES
 from app.models.models import User
 
-router = APIRouter(prefix="/api/v1/videos", tags=["videos"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/api/v1/videos",
+    tags=["videos"],
+    dependencies=[Depends(get_current_user)],
+    responses=COMMON_ERROR_RESPONSES,
+)
 
 
 async def _ensure_video_access(video_id: UUID, current_user: User, db: AsyncSession) -> None:

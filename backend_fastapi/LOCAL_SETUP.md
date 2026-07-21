@@ -51,6 +51,17 @@ createdb goalkeeper_ai -U <your_postgres_user>
 # \q
 ```
 
+**Apply the schema (obrigatorio):** o Alembic e o unico mecanismo oficial de
+schema deste projeto — a aplicacao **nao** cria/altera tabelas sozinha em
+runtime. Rode isso sempre que o banco for novo, ou apos atualizar o codigo:
+
+```bash
+alembic upgrade head
+```
+
+Funciona tanto para um banco novo (aplica todas as migrations do zero)
+quanto para um banco ja existente (aplica so as migrations pendentes).
+
 ### Step 5: Run the Application
 
 ```bash

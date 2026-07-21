@@ -14,8 +14,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user
-from app.db.base import get_db
 from app.models.models import User, UserRole, Goalkeeper, TrainingSession, Video, ProcessingJob
+
+# Documentacao Swagger padronizada: FastAPI so lista no OpenAPI os codigos de
+# resposta declarados explicitamente - excecoes levantadas em runtime
+# (HTTPException dentro do corpo da funcao) nao aparecem sozinhas. Sem isso,
+# nenhum endpoint protegido documentava 401/403/404, mesmo eles acontecendo
+# na pratica (achado da auditoria da Sprint 6). Usado como `responses=` no
+# APIRouter de cada modulo.
+COMMON_ERROR_RESPONSES = {
+    401: {"description": "Token ausente, invalido ou expirado"},
+    403: {"description": "Autenticado, mas sem permissao para este recurso"},
+    404: {"description": "Recurso nao encontrado"},
+}
 
 
 def is_admin(user: User) -> bool:

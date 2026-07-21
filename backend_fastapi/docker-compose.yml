@@ -33,7 +33,11 @@ services:
         condition: service_healthy
     volumes:
       - .:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    # Alembic e o unico mecanismo oficial de schema (ver SPRINT6_REPORT.md):
+    # "alembic upgrade head" roda sempre antes do servidor subir, tanto para
+    # um ambiente novo (aplica todas as migrations do zero) quanto para um
+    # ambiente ja existente (aplica so as migrations pendentes).
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 10s

@@ -1,9 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, users, clubs, coaches, goalkeepers, training_sessions, videos, processing_jobs, r2
-from app.db.base import engine, Base
 from app.core.config import get_settings
-from app.core.r2 import R2ValidationError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,9 +33,11 @@ app.include_router(r2.router)
 
 @app.on_event("startup")
 async def startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
+    # O schema do banco e gerenciado exclusivamente pelo Alembic (fluxo
+    # oficial unico - ver SPRINT6_REPORT.md). A aplicacao nao cria/altera
+    # tabelas em runtime; rode "alembic upgrade head" antes de iniciar o
+    # servidor (ja integrado ao comando do container no docker-compose.yml).
+
     # Validate required R2 environment variables
     settings = get_settings()
     missing_vars = []

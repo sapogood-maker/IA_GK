@@ -1,6 +1,14 @@
 # DOMAIN_ARCHITECTURE.md — Multi-tenancy, Autorização e Modelo de Dados
 
-> Documento vivo, atualizado na Sprint 5. Complementa `AI_WORKER_ARCHITECTURE.md` (arquitetura do futuro AI Worker) e `PROJECT_ANALYSIS.md` (estado geral do projeto). Este documento descreve **como o backend está organizado hoje** para autenticação, autorização e dados — a base sobre a qual o AI Worker vai operar no futuro, sem precisar alterá-la.
+> Documento vivo, atualizado nas Sprints 5 e 6. Complementa `AI_WORKER_ARCHITECTURE.md` (arquitetura do futuro AI Worker), `PROJECT_ANALYSIS.md` (estado geral do projeto) e `SPRINT6_REPORT.md` (auditoria e consolidação). Este documento descreve **como o backend está organizado hoje** para autenticação, autorização e dados — a base sobre a qual o AI Worker vai operar no futuro, sem precisar alterá-la.
+
+## Atualização — Sprint 6 (consolidação)
+
+- **Schema do banco**: `Base.metadata.create_all` foi **removido** de `app/main.py`. O Alembic é agora o **único** mecanismo oficial de schema — `alembic upgrade head` roda automaticamente antes do servidor subir (comando do container no `docker-compose.yml`), funcionando tanto para um ambiente novo (aplica tudo do zero) quanto para um já existente (aplica só as migrations pendentes). Validado explicitamente nos dois cenários.
+- **`users.email`**: removido um índice redundante (`ix_users_email`) que coexistia com o índice implícito da `UNIQUE CONSTRAINT` sobre a mesma coluna (migration `005`).
+- **Refresh token**: dois bugs reais encontrados via os novos testes automatizados e corrigidos — (1) `/auth/refresh` retornava sempre `401` porque `decode_token` exigia um claim `email` que o refresh token nunca carregou (existia desde o início do projeto); (2) o refresh token não tinha nenhum claim de unicidade, então duas emissões no mesmo segundo eram byte-a-byte idênticas, anulando a rotação. Ambos corrigidos — ver `SPRINT6_REPORT.md`.
+- **Testes automatizados**: suíte nova em `backend_fastapi/tests/` (antes inexistente), cobrindo autenticação, autorização/isolamento entre clubes e validação de upload.
+- **Documentação Swagger**: todos os routers protegidos agora declaram `responses` para `401`/`403`/`404`, que antes não apareciam no OpenAPI (FastAPI só documenta o que é declarado explicitamente, não exceções levantadas em runtime).
 
 ---
 

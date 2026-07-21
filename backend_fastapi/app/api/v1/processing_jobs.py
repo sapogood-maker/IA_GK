@@ -8,10 +8,15 @@ from app.schemas.schemas import (
 )
 from app.repositories.repositories import ProcessingJobRepository, VideoRepository
 from app.core.security import get_current_user
-from app.core.authorization import is_admin, effective_club_scope, resolve_club_id_for_video, resolve_club_id_for_processing_job
+from app.core.authorization import is_admin, effective_club_scope, resolve_club_id_for_video, resolve_club_id_for_processing_job, COMMON_ERROR_RESPONSES
 from app.models.models import User
 
-router = APIRouter(prefix="/api/v1/processing-jobs", tags=["processing-jobs"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/api/v1/processing-jobs",
+    tags=["processing-jobs"],
+    dependencies=[Depends(get_current_user)],
+    responses=COMMON_ERROR_RESPONSES,
+)
 
 
 async def _ensure_job_access(job_id: UUID, current_user: User, db: AsyncSession) -> None:

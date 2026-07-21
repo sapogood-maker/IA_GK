@@ -5,7 +5,7 @@ import tempfile
 import os
 
 from app.core.r2 import get_r2_service, R2ValidationError, R2Service
-from app.core.authorization import require_roles
+from app.core.authorization import require_roles, COMMON_ERROR_RESPONSES
 from app.models.models import UserRole
 
 logger = logging.getLogger(__name__)
@@ -14,6 +14,7 @@ router = APIRouter(
     prefix="/api/v1/r2",
     tags=["r2"],
     dependencies=[Depends(require_roles(UserRole.SYSTEM_ADMIN))],
+    responses=COMMON_ERROR_RESPONSES,
 )
 
 
@@ -48,7 +49,7 @@ async def r2_health(r2_service: R2Service = Depends(get_r2_service)):
         r2_service.validate_credentials()
         
         # Validate bucket access
-        bucket_info = r2_service.validate_bucket_access()
+        r2_service.validate_bucket_access()
         
         # Validate read access
         read_access = await r2_service.validate_read_access()

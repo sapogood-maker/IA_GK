@@ -5,10 +5,15 @@ from app.db.base import get_db
 from app.schemas.schemas import TrainingSessionCreate, TrainingSessionResponse, TrainingSessionUpdate
 from app.repositories.repositories import TrainingSessionRepository, GoalkeeperRepository, CoachRepository
 from app.core.security import get_current_user
-from app.core.authorization import is_admin, effective_club_scope, resolve_club_id_for_training_session
+from app.core.authorization import is_admin, effective_club_scope, resolve_club_id_for_training_session, COMMON_ERROR_RESPONSES
 from app.models.models import User
 
-router = APIRouter(prefix="/api/v1/training-sessions", tags=["training-sessions"], dependencies=[Depends(get_current_user)])
+router = APIRouter(
+    prefix="/api/v1/training-sessions",
+    tags=["training-sessions"],
+    dependencies=[Depends(get_current_user)],
+    responses=COMMON_ERROR_RESPONSES,
+)
 
 
 async def _ensure_session_access(session_id: UUID, current_user: User, db: AsyncSession) -> None:

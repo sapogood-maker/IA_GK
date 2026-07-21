@@ -19,3 +19,8 @@ boto3==1.28.85
 # atualizar o bcrypt sem atualizar/trocar o passlib junto.
 bcrypt==4.0.1
 passlib[bcrypt]==1.7.4
+
+# --- Testes automatizados (ver backend_fastapi/tests/) ---
+pytest==7.4.4
+pytest-asyncio==0.23.5
+httpx==0.26.0
