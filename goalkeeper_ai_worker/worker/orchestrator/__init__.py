@@ -1,6 +1,6 @@
-"""Executa o Pipeline: decide a transicao entre Stages e aplica a politica
-de timeout/retry/cancelamento (AI_WORKER_CONSTITUTION.md, Secao 1 e 5).
+"""Coordena o Pipeline: decide a transicao entre Stages (Sprint W3, ver
+`orchestrator.py`, `WorkerOrchestrator`).
 
-Nao conhece R2 nem qual Plugin esta ativo - so orquestra a sequencia
-declarada em `worker.pipeline`. Vazio ate a Sprint W3.
+Nao conhece R2 nem qual Plugin esta ativo (nao existem ainda) - so
+orquestra a sequencia de Stages declarada em `worker.pipeline.stages`.
 """

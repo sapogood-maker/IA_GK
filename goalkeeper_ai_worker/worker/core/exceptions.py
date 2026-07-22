@@ -30,3 +30,12 @@ class BackendRequestError(WorkerError):
         self.status_code = status_code
         self.detail = detail
         super().__init__(f"Backend request failed ({status_code}): {detail}")
+
+
+class StorageError(WorkerError):
+    """Falha ao baixar ou enviar bytes via URL assinada do Cloudflare R2."""
+
+
+class PipelineError(WorkerError):
+    """Falha de negocio dentro de um Stage do Pipeline (Sprint W3) - por
+    exemplo, um Job inconsistente ou ja em estado terminal."""

@@ -1,6 +1,6 @@
-"""Plugins de evento (Event Registry - AI_WORKER_CONSTITUTION.md, Secao 6).
+"""Eventos internos do ciclo de vida de um Job (Sprint W3) - por enquanto
+apenas logging estruturado; preparado para futuramente alimentar metricas.
 
-Cada Plugin detecta um tipo de evento tecnico (Defesa, Saida, Reposicao,
-1x1, Cruzamento, etc.) a partir de trajetorias e metricas ja calculadas.
-Independente das demais familias de Plugin. Vazio ate a Sprint W5.
+Ver `events.py` para a nota sobre a sobreposicao de nome com o Event
+Registry (Plugins de evento tecnico) planejado para a Sprint W5.
 """

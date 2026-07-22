@@ -1,7 +1,6 @@
-"""Checkpoint efemero local do Job em andamento (AI_WORKER_CONSTITUTION.md,
-Secao 3 e 5) - permite retomar da ultima etapa concluida apos um crash do
-processo, em vez de recomecar do zero.
+"""Checkpoint efemero local do Job em andamento.
 
-Nao e um banco de dados de producao - e um estado local, descartavel,
-por Job. Vazio ate a Sprint W3.
+Implementado na Sprint W3 (`pipeline_state.py`, `PipelineState`) - todo o
+estado de um Job passando pelo Pipeline, trocado entre Stages. Nao e um
+banco de dados de producao - e um estado local, descartavel, por Job.
 """

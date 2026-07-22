@@ -64,6 +64,12 @@ class _BaseBackendClient:
         """Fecha o cliente HTTP subjacente."""
         await self._http.aclose()
 
+    async def __aenter__(self) -> "_BaseBackendClient":
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, tb: object) -> None:
+        await self.aclose()
+
 
 class BackendClient(_BaseBackendClient):
     """Fachada com os endpoints da Worker API usados pelo Worker."""

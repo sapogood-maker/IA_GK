@@ -1,6 +1,6 @@
-"""Declara a sequencia versionada de Stages do Pipeline (Pipeline Version -
-AI_WORKER_CONSTITUTION.md, Secao 2 e 8, ADR-006).
+"""Declara a sequencia de Stages do Pipeline (Sprint W3 - ver `stages/`).
 
-Nao implementa os Stages, so os declara - a execucao e responsabilidade de
-`worker.orchestrator`. Vazio ate a Sprint W3.
+Nao implementa a orquestracao - isso e responsabilidade de
+`worker.orchestrator`. Pipeline Version (AI_WORKER_CONSTITUTION.md, Secao 8,
+ADR-006) ainda nao existe - fica para quando houver Plugins reais (W4+).
 """

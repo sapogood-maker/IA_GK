@@ -2,5 +2,8 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 redis==5.0.1
 httpx==0.26.0
+opencv-python-headless==4.10.0.84
+numpy==2.2.6
+ultralytics==8.4.104
 pytest==7.4.4
 pytest-asyncio==0.23.5
