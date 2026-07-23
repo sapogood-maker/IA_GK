@@ -210,6 +210,147 @@ class WorkerSettings(BaseSettings):
         "considerar que ha oclusao entre elas.",
     )
 
+    # --- World Model (Sprint W11) ---
+    world_model: str = Field(
+        default="",
+        description="Nome do WorldModel ativo, resolvido por worker.inference."
+        "world.factory.create_world_model. Vazio (padrao) = WorldModelProcessor "
+        "desabilitado. 'basic' e o unico WorldModel registrado hoje - a ultima "
+        "camada generica da arquitetura; futuros analisadores especificos de "
+        "futebol (W12+) consomem WorldState, sem conhecer Detector/Tracker/"
+        "SceneAnalyzer diretamente.",
+    )
+    world_model_enabled: bool = Field(
+        default=False,
+        description="Liga/desliga o WorldModelProcessor. Precisa estar True E "
+        "'world_model' precisa apontar para um WorldModel registrado - dois "
+        "interruptores independentes, mesmo padrao de tracking_enabled/tracker "
+        "(Sprint W9) e scene_analysis_enabled/scene_analyzer (Sprint W10).",
+    )
+    world_history_size: int = Field(
+        default=30,
+        description="Quantos SceneEvents recentes o WorldModel mantem em "
+        "memoria (WorldState.recent_events) - nunca cresce alem disso.",
+    )
+    world_max_trajectory: int = Field(
+        default=30,
+        description="Quantos pontos recentes de posicao cada ObjectState.trajectory "
+        "mantem - nunca cresce alem disso.",
+    )
+    world_max_objects: int = Field(
+        default=200,
+        description="Quantos objetos (ativos + perdidos) o WorldModel mantem "
+        "em memoria no maximo - ao exceder, remove os objetos perdidos mais "
+        "antigos primeiro (nunca remove um objeto ativo). <=0 desativa o limite.",
+    )
+
+    # --- Football Domain Model (Sprint W12) ---
+    football_domain_enabled: bool = Field(
+        default=False,
+        description="Liga/desliga o FootballDomainProcessor. Diferente de "
+        "Detector/Tracker/SceneAnalyzer/WorldModel, nao ha um segundo "
+        "interruptor de 'qual implementacao' - FootballWorldBuilder e a "
+        "unica implementacao do dominio, nao uma familia de Plugin "
+        "substituivel (sem Registry/factory nesta camada, de proposito).",
+    )
+
+    # --- Analyzer API (Sprint W13) ---
+    analyzers: str = Field(
+        default="",
+        description="Nomes dos Analyzers ativos, separados por virgula "
+        "(ex.: 'goalkeeper_presence'), resolvidos por worker.analyzers."
+        "factory.create_analyzer. Vazio (padrao) = AnalyzerProcessor "
+        "desabilitado. Diferente de Detector/Tracker/SceneAnalyzer/"
+        "WorldModel (uma unica implementacao ativa por vez), varios "
+        "Analyzers podem rodar simultaneamente - cada um responde uma "
+        "pergunta independente sobre o mesmo FootballWorld; por isso um "
+        "unico campo de lista basta como interruptor (vazio = "
+        "desabilitado), sem precisar de um segundo '_enabled' separado.",
+    )
+
+    @property
+    def analyzer_names(self) -> list[str]:
+        """`analyzers` (string bruta) recortada em nomes individuais,
+        ignorando espacos e entradas vazias - usado por AnalyzerProcessor
+        para resolver, via factory, cada Analyzer ativo."""
+        return [name.strip() for name in self.analyzers.split(",") if name.strip()]
+
+    # --- Shot Analyzer (Sprint W19) ---
+    shot_min_speed: float = Field(
+        default=20.0,
+        description="Velocidade minima observada (pixels/frame - ver "
+        "Motion.speed, Secao 6.1) para considerar o movimento da bola "
+        "compativel com um chute. Placeholder nao calibrado a nenhum "
+        "video real (mesma limitacao de escala do Risco 20/22/27) - "
+        "ajustar por deployment conforme resolucao/distancia de camera.",
+    )
+    shot_max_angle_deviation_degrees: float = Field(
+        default=25.0,
+        description="Desvio angular maximo (graus) entre a direcao "
+        "observada do movimento da bola e a direcao da bola ate o centro "
+        "do gol, para considerar o movimento 'em direcao ao gol'.",
+    )
+    shot_min_consecutive_frames: int = Field(
+        default=2,
+        description="Quantos frames CONSECUTIVOS o movimento precisa "
+        "satisfazer velocidade minima + direcao consistente antes de "
+        "shot_detected se tornar True - exige 'movimento continuo', nao "
+        "um pico isolado de velocidade num unico frame.",
+    )
+
+    # --- Ball Trajectory Analyzer (Sprint W20) ---
+    trajectory_direction_change_threshold_degrees: float = Field(
+        default=30.0,
+        description="Desvio angular minimo (graus) entre dois segmentos "
+        "consecutivos da trajetoria observada da bola para contar como "
+        "uma 'mudanca de direcao' (direction_changes) - abaixo disso, e "
+        "considerado ruido normal de deteccao, nao uma mudanca real.",
+    )
+
+    # --- Goalkeeper Decision Analyzer (Sprint W22) ---
+    goalkeeper_shift_min_speed: float = Field(
+        default=3.0,
+        description="Velocidade minima observada do PROPRIO goleiro "
+        "(pixels/frame) para considerar que ele se moveu de proposito "
+        "(reposicionamento) - abaixo disso, e tratado como ruido normal "
+        "de deteccao/tracking e classificado como STAY_ON_LINE.",
+    )
+    goalkeeper_dive_min_speed: float = Field(
+        default=15.0,
+        description="Velocidade minima observada do goleiro (pixels/frame) "
+        "para que um movimento lateral durante um chute detectado conte "
+        "como um mergulho (DIVE_LEFT/DIVE_RIGHT) em vez de apenas "
+        "'preparando' (PREPARE_DIVE) - placeholder nao calibrado a nenhum "
+        "video real, mesma limitacao de escala do Risco 20/22/27/34.",
+    )
+
+    # --- Goalkeeper Decision Evaluation Analyzer (Sprint W23) ---
+    goalkeeper_evaluation_min_lateral_signal: float = Field(
+        default=2.0,
+        description="Magnitude minima (pixels/frame) da componente lateral "
+        "de movimento (goleiro OU bola) para considerar a direcao um sinal "
+        "claro o suficiente para a regra 'dive_direction_matches_ball_"
+        "direction' - abaixo disso, a regra e marcada como NAO APLICAVEL "
+        "(nunca forca um veredito sobre ruido de deteccao/tracking).",
+    )
+
+    # --- Play Outcome Analyzer (Sprint W24) ---
+    outcome_post_proximity_px: float = Field(
+        default=15.0,
+        description="Distancia maxima (pixels) entre a ultima posicao "
+        "conhecida da bola e um poste (GoalGeometryResult.left_post/"
+        "right_post) para classificar o resultado como POST - placeholder "
+        "nao calibrado a nenhum video real, mesma limitacao de escala do "
+        "Risco 20/22/27/34.",
+    )
+    outcome_save_proximity_px: float = Field(
+        default=30.0,
+        description="Distancia maxima (pixels) entre a ultima posicao "
+        "conhecida da bola e a ultima posicao conhecida do goleiro, apos "
+        "um chute detectado, para classificar o resultado como SAVE - "
+        "mesma limitacao de escala do Risco 20/22/27/34.",
+    )
+
 
 @lru_cache
 def get_settings() -> WorkerSettings:

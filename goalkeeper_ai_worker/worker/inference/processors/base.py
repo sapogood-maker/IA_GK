@@ -13,10 +13,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from worker.analyzers.results import AnalysisResult
 from worker.config.settings import WorkerSettings
+from worker.domain.football_world import FootballWorld
 from worker.inference.detectors.types import DetectionResult
 from worker.inference.events.types import SceneAnalysisResult
 from worker.inference.trackers.types import TrackingResult
+from worker.inference.world.world_state import WorldState
 from worker.video.metadata import FrameMetadata
 
 
@@ -40,13 +43,18 @@ class ProcessorContext:
     """Estado compartilhado entre Processors ao longo de uma execução da
     pipeline — acumula estatísticas por Processor (tempo de execução,
     frames processados), resultados de detecção (Sprint W8), resultados
-    de tracking (Sprint W9) e resultados de análise de cena (Sprint W10),
-    que entram no artefato JSON final."""
+    de tracking (Sprint W9), resultados de análise de cena (Sprint W10),
+    estados do mundo (Sprint W11), estados de domínio de futebol
+    (Sprint W12) e resultados de análise (Sprint W13), que entram no
+    artefato JSON final."""
 
     stats: dict[str, ProcessorStats] = field(default_factory=dict)
     detections: list[DetectionResult] = field(default_factory=list)
     tracking_results: list[TrackingResult] = field(default_factory=list)
     scene_analysis_results: list[SceneAnalysisResult] = field(default_factory=list)
+    world_states: list[WorldState] = field(default_factory=list)
+    football_worlds: list[FootballWorld] = field(default_factory=list)
+    analysis_results: list[AnalysisResult] = field(default_factory=list)
 
     def record(self, processor_name: str, duration_ms: float) -> None:
         """Registra que `processor_name` processou mais um frame, levando `duration_ms`."""
@@ -72,8 +80,32 @@ class ProcessorContext:
         """Acumula o `SceneAnalysisResult` de um frame - usado por
         qualquer Processor de análise de cena (hoje só
         `SceneAnalysisProcessor`), lido só pelo motor, após a pipeline
-        terminar."""
+        terminar (ou por `WorldModelProcessor`, que lê a última entrada
+        do MESMO frame)."""
         self.scene_analysis_results.append(result)
+
+    def add_world_state(self, state: WorldState) -> None:
+        """Acumula o `WorldState` de um frame - usado por qualquer
+        Processor de World Model (hoje só `WorldModelProcessor`), lido só
+        pelo motor, após a pipeline terminar (ou por
+        `FootballDomainProcessor`, que lê a última entrada do MESMO frame)."""
+        self.world_states.append(state)
+
+    def add_football_world(self, football_world: FootballWorld) -> None:
+        """Acumula o `FootballWorld` de um frame - usado por qualquer
+        Processor de domínio de futebol (hoje só
+        `FootballDomainProcessor`), lido só pelo motor, após a pipeline
+        terminar."""
+        self.football_worlds.append(football_world)
+
+    def add_analysis_result(self, result: AnalysisResult) -> None:
+        """Acumula um `AnalysisResult` (de um Analyzer, para um frame) -
+        usado por `AnalyzerProcessor` (Sprint W13, `worker.analyzers.
+        processor`), lido só pelo motor, após a pipeline terminar. Vários
+        Analyzers ativos produzem várias entradas para o MESMO frame -
+        diferente de `add_world_state`/`add_football_world` (uma única
+        implementação ativa por vez)."""
+        self.analysis_results.append(result)
 
     def to_dict(self) -> dict:
         return {name: stat.to_dict() for name, stat in self.stats.items()}

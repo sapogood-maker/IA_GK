@@ -31,6 +31,21 @@ def test_first_appearance_emits_track_started_and_object_entered_frame() -> None
     assert SceneEventType.OBJECT_ENTERED_FRAME in event_types
 
 
+def test_analyze_carries_object_snapshots_for_the_world_model(monkeypatch) -> None:
+    """SceneEvent nao carrega bbox - o World Model (W11) depende de
+    `SceneAnalysisResult.objects` para obter posicao/bbox reais."""
+    analyzer = BasicSceneAnalyzer(get_settings())
+
+    result = analyzer.analyze(_result([_tracked(1, 10, 20, 0, label="ball")], 0))
+
+    assert len(result.objects) == 1
+    snapshot = result.objects[0]
+    assert snapshot.track_id == 1
+    assert snapshot.label == "ball"
+    assert snapshot.bbox.x == 10
+    assert snapshot.bbox.y == 20
+
+
 def test_continued_tracking_without_transition_emits_track_updated() -> None:
     analyzer = BasicSceneAnalyzer(get_settings())
     analyzer.analyze(_result([_tracked(1, 10, 10, 0)], 0))

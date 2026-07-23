@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from worker.inference.trackers.types import BoundingBox
+
 
 class SceneEventType(str, Enum):
     """Todo tipo de evento de cena reconhecido nesta sprint - genérico,
@@ -89,11 +91,37 @@ class SceneStatistics:
         }
 
 
+@dataclass(frozen=True)
+class SceneObjectSnapshot:
+    """Retrato posicional de um objeto rastreado no frame atual.
+
+    `SceneEvent` descreve TRANSIÇÕES (começou/parou/ficou oculto), nunca
+    carrega bbox/confidence - por isso o World Model (Sprint W11), que só
+    pode conhecer `SceneAnalysisResult`, precisava de outra fonte para
+    construir `ObjectState` (posição, trajetória, velocidade). Esta é
+    essa fonte: um snapshot mínimo, populado por `BasicSceneAnalyzer` a
+    partir do `TrackingResult` que ele já recebe."""
+
+    track_id: int
+    label: str
+    confidence: float
+    bbox: BoundingBox
+
+    def to_dict(self) -> dict:
+        return {
+            "track_id": self.track_id,
+            "label": self.label,
+            "confidence": self.confidence,
+            "bbox": {"x": self.bbox.x, "y": self.bbox.y, "width": self.bbox.width, "height": self.bbox.height},
+        }
+
+
 @dataclass
 class SceneAnalysisResult:
     """Resultado completo de uma chamada a `SceneAnalyzer.analyze(tracking_result)`."""
 
     events: list[SceneEvent] = field(default_factory=list)
+    objects: list[SceneObjectSnapshot] = field(default_factory=list)
     frame_index: int = 0
     analyzer_name: str = ""
     analyzer_version: str = ""
@@ -108,4 +136,5 @@ class SceneAnalysisResult:
             "duration_ms": self.duration_ms,
             "statistics": self.statistics.to_dict(),
             "events": [event.to_dict() for event in self.events],
+            "objects": [obj.to_dict() for obj in self.objects],
         }

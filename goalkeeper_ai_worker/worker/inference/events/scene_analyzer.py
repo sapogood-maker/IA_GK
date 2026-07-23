@@ -23,6 +23,7 @@ from worker.inference.events.types import (
     SceneAnalysisResult,
     SceneEvent,
     SceneEventType,
+    SceneObjectSnapshot,
     SceneStatistics,
     TrackLifecycle,
 )
@@ -80,9 +81,16 @@ class BasicSceneAnalyzer(SceneAnalyzer):
 
         duration_ms = (time.monotonic() - start) * 1000
         statistics = self._compute_statistics(events)
+        objects = [
+            SceneObjectSnapshot(
+                track_id=obj.track_id, label=obj.label, confidence=obj.confidence, bbox=obj.bbox
+            )
+            for obj in tracking_result.tracked_objects
+        ]
 
         return SceneAnalysisResult(
             events=events,
+            objects=objects,
             frame_index=tracking_result.frame_index,
             analyzer_name=self.name,
             analyzer_version=self.version,

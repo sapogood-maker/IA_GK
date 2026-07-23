@@ -44,6 +44,12 @@ def test_settings_defaults_apply(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("WORKER_SCENE_ANALYSIS_ENABLED", raising=False)
     monkeypatch.delenv("WORKER_SCENE_MOTION_THRESHOLD_PX", raising=False)
     monkeypatch.delenv("WORKER_SCENE_OCCLUSION_IOU_THRESHOLD", raising=False)
+    monkeypatch.delenv("WORKER_WORLD_MODEL", raising=False)
+    monkeypatch.delenv("WORKER_WORLD_MODEL_ENABLED", raising=False)
+    monkeypatch.delenv("WORKER_WORLD_HISTORY_SIZE", raising=False)
+    monkeypatch.delenv("WORKER_WORLD_MAX_TRAJECTORY", raising=False)
+    monkeypatch.delenv("WORKER_WORLD_MAX_OBJECTS", raising=False)
+    monkeypatch.delenv("WORKER_FOOTBALL_DOMAIN_ENABLED", raising=False)
     get_settings.cache_clear()
 
     settings = get_settings()
@@ -79,6 +85,139 @@ def test_settings_defaults_apply(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.scene_analysis_enabled is False
     assert settings.scene_motion_threshold_px == 5.0
     assert settings.scene_occlusion_iou_threshold == 0.3
+    assert settings.world_model == ""
+    assert settings.world_model_enabled is False
+    assert settings.world_history_size == 30
+    assert settings.world_max_trajectory == 30
+    assert settings.world_max_objects == 200
+    assert settings.football_domain_enabled is False
+    assert settings.analyzers == ""
+    assert settings.analyzer_names == []
+    assert settings.shot_min_speed == 20.0
+    assert settings.shot_max_angle_deviation_degrees == 25.0
+    assert settings.shot_min_consecutive_frames == 2
+    assert settings.trajectory_direction_change_threshold_degrees == 30.0
+    assert settings.goalkeeper_shift_min_speed == 3.0
+    assert settings.goalkeeper_dive_min_speed == 15.0
+    assert settings.goalkeeper_evaluation_min_lateral_signal == 2.0
+    assert settings.outcome_post_proximity_px == 15.0
+    assert settings.outcome_save_proximity_px == 30.0
+
+
+def test_settings_football_domain_enabled_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WORKER_FOOTBALL_DOMAIN_ENABLED deve ser lido do ambiente."""
+    monkeypatch.setenv("WORKER_FOOTBALL_DOMAIN_ENABLED", "true")
+    get_settings.cache_clear()
+
+    assert get_settings().football_domain_enabled is True
+
+
+def test_settings_analyzers_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WORKER_ANALYZERS deve ser lido do ambiente e recortado em uma lista
+    de nomes - vazio (padrao) = nenhum Analyzer ativo."""
+    monkeypatch.setenv("WORKER_ANALYZERS", "goalkeeper_presence")
+    get_settings.cache_clear()
+
+    assert get_settings().analyzer_names == ["goalkeeper_presence"]
+
+
+def test_settings_analyzers_parses_multiple_comma_separated_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WORKER_ANALYZERS", "goalkeeper_presence, ball ,  ")
+    get_settings.cache_clear()
+
+    assert get_settings().analyzer_names == ["goalkeeper_presence", "ball"]
+
+
+def test_settings_shot_thresholds_are_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WORKER_SHOT_MIN_SPEED/WORKER_SHOT_MAX_ANGLE_DEVIATION_DEGREES/
+    WORKER_SHOT_MIN_CONSECUTIVE_FRAMES devem ser lidos do ambiente,
+    permitindo ajustar os criterios deterministicos de deteccao de chute
+    sem mudar codigo."""
+    monkeypatch.setenv("WORKER_SHOT_MIN_SPEED", "35.0")
+    monkeypatch.setenv("WORKER_SHOT_MAX_ANGLE_DEVIATION_DEGREES", "10.0")
+    monkeypatch.setenv("WORKER_SHOT_MIN_CONSECUTIVE_FRAMES", "5")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.shot_min_speed == 35.0
+    assert settings.shot_max_angle_deviation_degrees == 10.0
+    assert settings.shot_min_consecutive_frames == 5
+
+
+def test_settings_trajectory_threshold_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WORKER_TRAJECTORY_DIRECTION_CHANGE_THRESHOLD_DEGREES deve ser lido
+    do ambiente, permitindo ajustar a sensibilidade de deteccao de
+    mudancas de direcao na trajetoria observada da bola sem mudar codigo."""
+    monkeypatch.setenv("WORKER_TRAJECTORY_DIRECTION_CHANGE_THRESHOLD_DEGREES", "45.0")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.trajectory_direction_change_threshold_degrees == 45.0
+
+
+def test_settings_goalkeeper_decision_thresholds_are_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WORKER_GOALKEEPER_SHIFT_MIN_SPEED/WORKER_GOALKEEPER_DIVE_MIN_SPEED
+    devem ser lidos do ambiente, permitindo ajustar os limiares
+    deterministicos de classificacao de decisao do goleiro sem mudar
+    codigo."""
+    monkeypatch.setenv("WORKER_GOALKEEPER_SHIFT_MIN_SPEED", "5.0")
+    monkeypatch.setenv("WORKER_GOALKEEPER_DIVE_MIN_SPEED", "20.0")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.goalkeeper_shift_min_speed == 5.0
+    assert settings.goalkeeper_dive_min_speed == 20.0
+
+
+def test_settings_goalkeeper_evaluation_threshold_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WORKER_GOALKEEPER_EVALUATION_MIN_LATERAL_SIGNAL deve ser lido do
+    ambiente, permitindo ajustar a sensibilidade da regra de direcao de
+    mergulho sem mudar codigo."""
+    monkeypatch.setenv("WORKER_GOALKEEPER_EVALUATION_MIN_LATERAL_SIGNAL", "5.0")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.goalkeeper_evaluation_min_lateral_signal == 5.0
+
+
+def test_settings_outcome_thresholds_are_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WORKER_OUTCOME_POST_PROXIMITY_PX/WORKER_OUTCOME_SAVE_PROXIMITY_PX
+    devem ser lidos do ambiente, permitindo ajustar os limiares
+    deterministicos de classificacao do resultado da jogada sem mudar
+    codigo."""
+    monkeypatch.setenv("WORKER_OUTCOME_POST_PROXIMITY_PX", "25.0")
+    monkeypatch.setenv("WORKER_OUTCOME_SAVE_PROXIMITY_PX", "40.0")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.outcome_post_proximity_px == 25.0
+    assert settings.outcome_save_proximity_px == 40.0
+
+
+def test_settings_world_model_options_are_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """WORKER_WORLD_MODEL/WORKER_WORLD_MODEL_ENABLED/WORKER_WORLD_HISTORY_SIZE/
+    WORKER_WORLD_MAX_TRAJECTORY/WORKER_WORLD_MAX_OBJECTS devem ser lidos
+    do ambiente, permitindo trocar de WorldModel (ou seus parametros) sem
+    mudar codigo."""
+    monkeypatch.setenv("WORKER_WORLD_MODEL", "basic")
+    monkeypatch.setenv("WORKER_WORLD_MODEL_ENABLED", "true")
+    monkeypatch.setenv("WORKER_WORLD_HISTORY_SIZE", "10")
+    monkeypatch.setenv("WORKER_WORLD_MAX_TRAJECTORY", "15")
+    monkeypatch.setenv("WORKER_WORLD_MAX_OBJECTS", "50")
+    get_settings.cache_clear()
+
+    settings = get_settings()
+
+    assert settings.world_model == "basic"
+    assert settings.world_model_enabled is True
+    assert settings.world_history_size == 10
+    assert settings.world_max_trajectory == 15
+    assert settings.world_max_objects == 50
 
 
 def test_settings_scene_analysis_options_are_configurable(monkeypatch: pytest.MonkeyPatch) -> None:

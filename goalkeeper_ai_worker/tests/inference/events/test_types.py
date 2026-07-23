@@ -7,9 +7,11 @@ from worker.inference.events.types import (
     SceneAnalysisResult,
     SceneEvent,
     SceneEventType,
+    SceneObjectSnapshot,
     SceneStatistics,
     TrackLifecycle,
 )
+from worker.inference.trackers.types import BoundingBox
 
 
 def test_scene_event_to_dict_serializes_all_fields() -> None:
@@ -62,3 +64,24 @@ def test_scene_analysis_result_defaults_to_no_events() -> None:
 
     assert result.events == []
     assert result.to_dict()["events"] == []
+
+
+def test_scene_object_snapshot_to_dict_serializes_bbox() -> None:
+    snapshot = SceneObjectSnapshot(
+        track_id=2, label="ball", confidence=0.8, bbox=BoundingBox(x=1, y=2, width=3, height=4)
+    )
+
+    assert snapshot.to_dict() == {
+        "track_id": 2, "label": "ball", "confidence": 0.8,
+        "bbox": {"x": 1, "y": 2, "width": 3, "height": 4},
+    }
+
+
+def test_scene_analysis_result_carries_object_snapshots() -> None:
+    snapshot = SceneObjectSnapshot(
+        track_id=1, label="player", confidence=0.9, bbox=BoundingBox(x=0, y=0, width=10, height=20)
+    )
+    result = SceneAnalysisResult(objects=[snapshot])
+
+    assert result.objects == [snapshot]
+    assert result.to_dict()["objects"] == [snapshot.to_dict()]
