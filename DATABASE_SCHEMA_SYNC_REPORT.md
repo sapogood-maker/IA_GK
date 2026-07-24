@@ -75,24 +75,55 @@ alembic stamp 003
 
 A migration `002` declara uma coluna `videos.size_bytes` (Integer) que **não existe** em produção e **não existe** no model atual (`app/models/models.py` só tem `file_size_bytes`). Isso é uma inconsistência histórica na própria migration `002` (aparentemente a coluna foi renomeada no código antes de qualquer migration formal existir), inofensiva hoje porque produção nunca teve essa coluna — mas significa que um banco **totalmente novo**, migrado do zero via `alembic upgrade head`, ganharia uma coluna `size_bytes` órfã (nunca lida/escrita pela aplicação). Não alterei a migration `002` (evitar reescrever uma migration histórica que pode já ter rodado em outros ambientes) — fica registrado aqui como item de limpeza futura, não bloqueia nada do fluxo atual.
 
-## Comando a ser executado no ambiente remoto (Coolify)
+## Segundo achado real, descoberto só ao executar contra produção: `CheckViolation` em `ck_users_club_id_required_unless_admin`
 
-Com o código já commitado/enviado (migration `004` idempotente), falta um único passo manual, uma única vez, direto no Postgres do Coolify:
+Depois do `alembic stamp 003` ser aplicado em produção, `alembic upgrade head` avançou de verdade (nada mais de `DuplicateTable`) mas parou num novo erro real, **dados genuínos, não um bug de código**:
+
+```
+psycopg.errors.CheckViolation: check constraint "ck_users_club_id_required_unless_admin" of relation "users" is violated by some row
+[SQL: ALTER TABLE users ADD CONSTRAINT ck_users_club_id_required_unless_admin CHECK (role = 'system_admin' OR club_id IS NOT NULL)]
+```
+
+**Causa**: existem usuários reais em produção (criados antes de `club_id` existir) com `role` diferente de `system_admin` e, obviamente, `club_id IS NULL` (a coluna acabara de ser criada, toda linha começa com `NULL`). A constraint nova exige exatamente o contrário para qualquer não-admin — violação imediata contra dados históricos legítimos. **A transação inteira de `004` foi revertida automaticamente** (DDL transacional do Postgres) — nada ficou pela metade; o banco voltou ao estado limpo pós-`stamp 003`.
+
+**Correção**: a constraint agora é criada com `NOT VALID` (recurso nativo do Postgres para exatamente este cenário — retrofitar uma regra de negócio numa tabela com dados históricos):
+
+```python
+op.execute(
+    "ALTER TABLE users ADD CONSTRAINT ck_users_club_id_required_unless_admin "
+    "CHECK (role = 'system_admin' OR club_id IS NOT NULL) NOT VALID"
+)
+```
+
+`NOT VALID` faz a constraint **valer a partir de agora** — todo `INSERT`/`UPDATE` novo é checado normalmente e rejeitado se violar a regra — mas **não** valida retroativamente as linhas que já existiam. Nenhum dado é apagado, modificado ou "corrigido à força"; os usuários legados continuam exatamente como estavam, só que agora com `club_id` disponível (e `NULL`, honestamente refletindo que ninguém ainda os associou a um clube). Atribuir um `club_id` real a eles é uma decisão de negócio (qual clube pertence a cada um?), fora do escopo de uma migration de schema.
+
+**Validado de novo, reproduzindo com dados idênticos**: recriei o cenário completo (tabelas de IA + enums pré-existentes) mais um usuário `role='treinador'` sem `club_id` (simulando exatamente o caso real) e um `system_admin`. `alembic stamp 003` + `alembic upgrade head` → sucesso completo, `alembic_version=005`. Confirmei:
+- Os dois usuários preexistentes continuam intactos (`SELECT * FROM users` mostra os mesmos dados, `club_id` NULL para ambos).
+- `pg_constraint.convalidated = f` para essa constraint — confirma que é `NOT VALID`, não validando o passado.
+- **Uma tentativa de inserir um usuário NOVO não-admin sem `club_id` foi corretamente rejeitada** (`ERROR: new row for relation "users" violates check constraint`) — prova que a regra protege dados futuros normalmente.
+- API real (container do backend) contra esse banco: login do usuário legado com senha errada → `401 Invalid credentials` (nunca mais `500`).
+- Suíte completa do backend: `48 passed`, sem regressão.
+
+## Comandos a serem executados no ambiente remoto (Coolify)
+
+Com o código já commitado/enviado (migration `004` idempotente + constraint `NOT VALID`), falta um único passo manual, uma única vez, direto no Postgres do Coolify — **você já aplicou isto** durante esta conversa, via SQL equivalente ao `alembic stamp`:
 
 ```sql
--- Rodar com o mesmo usuário/acesso usado nas queries de diagnóstico
+CREATE TABLE IF NOT EXISTS alembic_version (
+    version_num VARCHAR(32) NOT NULL,
+    CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
+);
+INSERT INTO alembic_version (version_num)
+SELECT '003'
+WHERE NOT EXISTS (SELECT 1 FROM alembic_version);
 ```
-```
-alembic stamp 003
-```
-(via terminal do container do backend no Coolify, ex.: `docker exec -it <container> alembic stamp 003` — ou o equivalente que o Coolify oferecer para rodar um comando dentro do container do backend)
 
-Depois disso, um redeploy/restart normal do serviço já aplica o resto automaticamente (o `entrypoint.sh` roda `alembic upgrade head`, que agora só faz o que genuinamente falta). Revalidar em seguida:
+Confirmado: `alembic_version = 003`. **Próximo passo**: fazer o deploy deste novo commit (com a constraint `NOT VALID`) e reiniciar/redeployar o serviço — o `entrypoint.sh` roda `alembic upgrade head` automaticamente, que agora deve completar sem erro (`003 → 004 → 005`). Revalidar em seguida:
 ```
 POST http://hs00sw0cwcksgc080okossk4.191.5.53.184.sslip.io/api/v1/auth/register
 POST http://hs00sw0cwcksgc080okossk4.191.5.53.184.sslip.io/api/v1/auth/login
 ```
-Ambos devem responder `200`/`400`/`401` conforme o caso — nunca mais `500`.
+Ambos devem responder `200`/`400`/`401` conforme o caso — nunca mais `500`. `lima.paulo@aol.com` deve conseguir logar normalmente (com a senha correta), mesmo que `club_id` ainda esteja `NULL` para essa conta — login nunca leu/exigiu `club_id`.
 
 ## Versão final do schema (validado local, idêntico ao que o comando acima produzirá em produção)
 
@@ -100,7 +131,10 @@ Ambos devem responder `200`/`400`/`401` conforme o caso — nunca mais `500`.
 users:
   id, name, email (unique), password_hash, role, created_at, updated_at,
   club_id (uuid, nullable, FK -> clubs.id ON DELETE SET NULL, indexed)
-  CHECK (role = 'system_admin' OR club_id IS NOT NULL)
+  CHECK (role = 'system_admin' OR club_id IS NOT NULL) -- NOT VALID: vale a
+                                                        -- partir de agora,
+                                                        -- nao retroativo a
+                                                        -- linhas legadas
 
 videos.upload_status:       varchar (era ENUM uploadstatus)
 processing_jobs.status:     varchar (era ENUM processingjobstatus)

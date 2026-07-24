@@ -71,10 +71,19 @@ def upgrade() -> None:
         op.create_foreign_key(
             "fk_users_club_id_clubs", "users", "clubs", ["club_id"], ["id"], ondelete="SET NULL"
         )
-        op.create_check_constraint(
-            "ck_users_club_id_required_unless_admin",
-            "users",
-            "role = 'system_admin' OR club_id IS NOT NULL",
+        # NOT VALID: usuarios criados ANTES desta migration (ex.: producao
+        # criada via create_all(), antes de club_id existir) podem ter
+        # role != 'system_admin' e club_id NULL - violando a regra para
+        # linhas historicas. NOT VALID cria a constraint e a aplica a
+        # partir de agora (todo INSERT/UPDATE futuro e checado
+        # normalmente), sem validar retroativamente linhas ja existentes -
+        # preserva 100% dos dados, nunca exige corrigir/apagar nada aqui.
+        # Atribuir um club_id real a esses usuarios legados e uma decisao
+        # de negocio (qual clube?), fora do escopo de uma migration de
+        # schema - ver DATABASE_SCHEMA_SYNC_REPORT.md.
+        op.execute(
+            "ALTER TABLE users ADD CONSTRAINT ck_users_club_id_required_unless_admin "
+            "CHECK (role = 'system_admin' OR club_id IS NOT NULL) NOT VALID"
         )
 
     # --- videos.upload_status: enum nativo -> VARCHAR ---
