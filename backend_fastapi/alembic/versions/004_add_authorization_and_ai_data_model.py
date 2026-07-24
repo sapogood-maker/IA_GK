@@ -13,6 +13,20 @@ Adds:
   pipeline de IA.
 - Tabelas vazias Analysis/Event/Metric/Artifact/Report, preparadas para o
   futuro AI Worker (ver AI_WORKER_ARCHITECTURE.md).
+
+Tornada IDEMPOTENTE em 2026-07-24 (ver DATABASE_SCHEMA_SYNC_REPORT.md) -
+achado real de producao: o banco do Coolify foi originalmente criado via
+Base.metadata.create_all() (removido de app/main.py so na Sprint 6, nunca
+via Alembic), num momento em que os models ja tinham as classes
+Analysis/Event/Metric/Artifact/Report mas AINDA NAO tinham users.club_id
+nem a conversao de upload_status/status para VARCHAR. Rodar esta
+migration do jeito original contra esse banco falhava com
+DuplicateTable ao tentar recriar as tabelas de IA que ja existiam.
+Cada bloco abaixo agora verifica o estado REAL do banco antes de agir -
+comportamento IDENTICO a antes em qualquer banco onde nada disto ainda
+existe (ex.: um ambiente novo, CI, ou dev local rodando as migrations em
+ordem desde o inicio); so passa a pular o que ja estiver la. Nenhuma
+mudanca em downgrade() - nao faz parte deste reparo.
 """
 from alembic import op
 import sqlalchemy as sa
@@ -24,126 +38,161 @@ branch_labels = None
 depends_on = None
 
 
+def _existing_tables(bind) -> set[str]:
+    return set(sa.inspect(bind).get_table_names())
+
+
+def _existing_columns(bind, table: str) -> set[str]:
+    return {col["name"] for col in sa.inspect(bind).get_columns(table)}
+
+
+def _column_udt_name(bind, table: str, column: str) -> str | None:
+    """Nome do tipo fisico no Postgres (ex.: "varchar", ou o nome de um
+    ENUM nativo como "uploadstatus") - mais confiavel do que comparar
+    objetos de tipo do SQLAlchemy entre versoes/dialetos."""
+    return bind.execute(
+        sa.text(
+            "SELECT udt_name FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :t AND column_name = :c"
+        ),
+        {"t": table, "c": column},
+    ).scalar()
+
+
 def upgrade() -> None:
+    bind = op.get_bind()
+
     # --- users.club_id (tenant) ---
-    op.add_column("users", sa.Column("club_id", postgresql.UUID(as_uuid=True), nullable=True))
-    op.create_index(op.f("ix_users_club_id"), "users", ["club_id"], unique=False)
-    op.create_foreign_key(
-        "fk_users_club_id_clubs", "users", "clubs", ["club_id"], ["id"], ondelete="SET NULL"
-    )
-    op.create_check_constraint(
-        "ck_users_club_id_required_unless_admin",
-        "users",
-        "role = 'system_admin' OR club_id IS NOT NULL",
-    )
+    # Os quatro objetos abaixo sao criados juntos, sempre - basta checar
+    # a coluna para saber se este bloco ja rodou.
+    if "club_id" not in _existing_columns(bind, "users"):
+        op.add_column("users", sa.Column("club_id", postgresql.UUID(as_uuid=True), nullable=True))
+        op.create_index(op.f("ix_users_club_id"), "users", ["club_id"], unique=False)
+        op.create_foreign_key(
+            "fk_users_club_id_clubs", "users", "clubs", ["club_id"], ["id"], ondelete="SET NULL"
+        )
+        op.create_check_constraint(
+            "ck_users_club_id_required_unless_admin",
+            "users",
+            "role = 'system_admin' OR club_id IS NOT NULL",
+        )
 
     # --- videos.upload_status: enum nativo -> VARCHAR ---
-    op.alter_column(
-        "videos",
-        "upload_status",
-        type_=sa.String(),
-        postgresql_using="upload_status::text",
-        existing_nullable=False,
-    )
-    op.execute("DROP TYPE IF EXISTS uploadstatus")
+    if _column_udt_name(bind, "videos", "upload_status") == "uploadstatus":
+        op.alter_column(
+            "videos",
+            "upload_status",
+            type_=sa.String(),
+            postgresql_using="upload_status::text",
+            existing_nullable=False,
+        )
+        op.execute("DROP TYPE IF EXISTS uploadstatus")
 
     # --- processing_jobs.status: enum nativo -> VARCHAR, + novo vocabulario oficial ---
-    op.alter_column(
-        "processing_jobs",
-        "status",
-        type_=sa.String(),
-        postgresql_using="status::text",
-        existing_nullable=False,
-    )
-    op.execute("DROP TYPE IF EXISTS processingjobstatus")
-    # Jobs que ainda estavam com o status antigo "PENDING" passam a refletir
-    # o novo vocabulario oficial (QUEUED e o estado inicial equivalente).
-    op.execute("UPDATE processing_jobs SET status = 'QUEUED' WHERE status = 'PENDING'")
+    if _column_udt_name(bind, "processing_jobs", "status") == "processingjobstatus":
+        op.alter_column(
+            "processing_jobs",
+            "status",
+            type_=sa.String(),
+            postgresql_using="status::text",
+            existing_nullable=False,
+        )
+        op.execute("DROP TYPE IF EXISTS processingjobstatus")
+        # Jobs que ainda estavam com o status antigo "PENDING" passam a refletir
+        # o novo vocabulario oficial (QUEUED e o estado inicial equivalente).
+        op.execute("UPDATE processing_jobs SET status = 'QUEUED' WHERE status = 'PENDING'")
+
+    existing_tables = _existing_tables(bind)
 
     # --- Analysis: uma versao de analise de IA sobre um Video ---
-    op.create_table(
-        "analyses",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("video_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("processing_job_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("version", sa.Integer(), nullable=False),
-        sa.Column("status", sa.String(), nullable=False, server_default="QUEUED"),
-        sa.Column("model_version", sa.String(), nullable=True),
-        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["video_id"], ["videos.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["processing_job_id"], ["processing_jobs.id"], ondelete="CASCADE"),
-        sa.UniqueConstraint("processing_job_id"),
-        sa.UniqueConstraint("video_id", "version", name="uq_analyses_video_version"),
-    )
-    op.create_index(op.f("ix_analyses_video_id"), "analyses", ["video_id"], unique=False)
+    if "analyses" not in existing_tables:
+        op.create_table(
+            "analyses",
+            sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("video_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("processing_job_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("version", sa.Integer(), nullable=False),
+            sa.Column("status", sa.String(), nullable=False, server_default="QUEUED"),
+            sa.Column("model_version", sa.String(), nullable=True),
+            sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("id"),
+            sa.ForeignKeyConstraint(["video_id"], ["videos.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(["processing_job_id"], ["processing_jobs.id"], ondelete="CASCADE"),
+            sa.UniqueConstraint("processing_job_id"),
+            sa.UniqueConstraint("video_id", "version", name="uq_analyses_video_version"),
+        )
+        op.create_index(op.f("ix_analyses_video_id"), "analyses", ["video_id"], unique=False)
 
     # --- Event: evento tecnico detectado dentro de uma Analysis ---
-    op.create_table(
-        "events",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("analysis_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("event_type", sa.String(), nullable=False),
-        sa.Column("timestamp_seconds", sa.Float(), nullable=False),
-        sa.Column("confidence", sa.Float(), nullable=True),
-        sa.Column("event_metadata", postgresql.JSONB(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["analysis_id"], ["analyses.id"], ondelete="CASCADE"),
-    )
-    op.create_index(op.f("ix_events_analysis_id"), "events", ["analysis_id"], unique=False)
+    if "events" not in existing_tables:
+        op.create_table(
+            "events",
+            sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("analysis_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("event_type", sa.String(), nullable=False),
+            sa.Column("timestamp_seconds", sa.Float(), nullable=False),
+            sa.Column("confidence", sa.Float(), nullable=True),
+            sa.Column("event_metadata", postgresql.JSONB(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("id"),
+            sa.ForeignKeyConstraint(["analysis_id"], ["analyses.id"], ondelete="CASCADE"),
+        )
+        op.create_index(op.f("ix_events_analysis_id"), "events", ["analysis_id"], unique=False)
 
     # --- Metric: metrica quantitativa de uma Analysis ---
-    op.create_table(
-        "metrics",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("analysis_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("name", sa.String(), nullable=False),
-        sa.Column("value", sa.Float(), nullable=False),
-        sa.Column("unit", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["analysis_id"], ["analyses.id"], ondelete="CASCADE"),
-    )
-    op.create_index(op.f("ix_metrics_analysis_id"), "metrics", ["analysis_id"], unique=False)
+    if "metrics" not in existing_tables:
+        op.create_table(
+            "metrics",
+            sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("analysis_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("name", sa.String(), nullable=False),
+            sa.Column("value", sa.Float(), nullable=False),
+            sa.Column("unit", sa.String(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("id"),
+            sa.ForeignKeyConstraint(["analysis_id"], ["analyses.id"], ondelete="CASCADE"),
+        )
+        op.create_index(op.f("ix_metrics_analysis_id"), "metrics", ["analysis_id"], unique=False)
 
     # --- Artifact: arquivo gerado (thumbnail, clipe, heatmap, predicoes em lote) ---
-    op.create_table(
-        "artifacts",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("analysis_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("event_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("artifact_type", sa.String(), nullable=False),
-        sa.Column("r2_bucket", sa.String(), nullable=True),
-        sa.Column("r2_key", sa.String(), nullable=True),
-        sa.Column("r2_url", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["analysis_id"], ["analyses.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["event_id"], ["events.id"], ondelete="CASCADE"),
-    )
-    op.create_index(op.f("ix_artifacts_analysis_id"), "artifacts", ["analysis_id"], unique=False)
-    op.create_index(op.f("ix_artifacts_event_id"), "artifacts", ["event_id"], unique=False)
+    if "artifacts" not in existing_tables:
+        op.create_table(
+            "artifacts",
+            sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("analysis_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("event_id", postgresql.UUID(as_uuid=True), nullable=True),
+            sa.Column("artifact_type", sa.String(), nullable=False),
+            sa.Column("r2_bucket", sa.String(), nullable=True),
+            sa.Column("r2_key", sa.String(), nullable=True),
+            sa.Column("r2_url", sa.String(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("id"),
+            sa.ForeignKeyConstraint(["analysis_id"], ["analyses.id"], ondelete="CASCADE"),
+            sa.ForeignKeyConstraint(["event_id"], ["events.id"], ondelete="CASCADE"),
+        )
+        op.create_index(op.f("ix_artifacts_analysis_id"), "artifacts", ["analysis_id"], unique=False)
+        op.create_index(op.f("ix_artifacts_event_id"), "artifacts", ["event_id"], unique=False)
 
     # --- Report: relatorio agregando analises de um goleiro ao longo do tempo ---
-    op.create_table(
-        "reports",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("goalkeeper_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("title", sa.String(), nullable=False),
-        sa.Column("period_start", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("period_end", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("status", sa.String(), nullable=False, server_default="QUEUED"),
-        sa.Column("r2_bucket", sa.String(), nullable=True),
-        sa.Column("r2_key", sa.String(), nullable=True),
-        sa.Column("r2_url", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["goalkeeper_id"], ["goalkeepers.id"], ondelete="CASCADE"),
-    )
-    op.create_index(op.f("ix_reports_goalkeeper_id"), "reports", ["goalkeeper_id"], unique=False)
+    if "reports" not in existing_tables:
+        op.create_table(
+            "reports",
+            sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("goalkeeper_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("title", sa.String(), nullable=False),
+            sa.Column("period_start", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("period_end", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("status", sa.String(), nullable=False, server_default="QUEUED"),
+            sa.Column("r2_bucket", sa.String(), nullable=True),
+            sa.Column("r2_key", sa.String(), nullable=True),
+            sa.Column("r2_url", sa.String(), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("id"),
+            sa.ForeignKeyConstraint(["goalkeeper_id"], ["goalkeepers.id"], ondelete="CASCADE"),
+        )
+        op.create_index(op.f("ix_reports_goalkeeper_id"), "reports", ["goalkeeper_id"], unique=False)
 
 
 def downgrade() -> None:
