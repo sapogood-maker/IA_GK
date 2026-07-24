@@ -39,6 +39,13 @@ class WorkerSettings(BaseSettings):
         default="INFO",
         description="Nivel de log (DEBUG|INFO|WARNING|ERROR).",
     )
+    log_dir: str = Field(
+        default="",
+        description="Deployment v1.0 (Docker): diretorio para logs em "
+        "arquivo (rotacionado), montavel como volume (`/app/logs`). "
+        "Vazio (padrao) = so stdout/stderr, mesmo comportamento de "
+        "antes desta sprint - nenhum teste existente foi afetado.",
+    )
 
     # --- Redis (fila de processamento - Sprint W2) ---
     redis_url: str = Field(
@@ -50,6 +57,15 @@ class WorkerSettings(BaseSettings):
         description="Nome do consumer group do stream `processing_jobs`. "
         "Fixo por convencao entre instancias - todas devem usar o mesmo "
         "grupo para balancear carga corretamente.",
+    )
+    startup_wait_timeout_seconds: float = Field(
+        default=60.0,
+        description="Deployment v1.0 (Docker): tempo maximo, em segundos, "
+        "que `worker.wait_for_redis` aguarda o Redis ficar alcancavel antes "
+        "de desistir (usado pelo entrypoint.sh do container, nunca em "
+        "runtime pelo Orchestrator - reconexao apos o startup e "
+        "responsabilidade do connection pool do redis.asyncio + do "
+        "restart:unless-stopped do Docker).",
     )
 
     # --- Worker API do backend (Sprint W2) ---

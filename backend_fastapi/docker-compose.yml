@@ -59,8 +59,13 @@ services:
     # Alembic e o unico mecanismo oficial de schema (ver SPRINT6_REPORT.md):
     # "alembic upgrade head" roda sempre antes do servidor subir, tanto para
     # um ambiente novo (aplica todas as migrations do zero) quanto para um
-    # ambiente ja existente (aplica so as migrations pendentes).
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload"
+    # ambiente ja existente (aplica so as migrations pendentes). Agora
+    # garantido pelo ENTRYPOINT do proprio Dockerfile (nao mais so por este
+    # `command:`) - funciona igual em qualquer forma de rodar a imagem, nao
+    # so via este compose (ver DATABASE_SCHEMA_SYNC_REPORT.md). `--reload`
+    # mantido aqui por ser uma conveniencia de desenvolvimento local, nao
+    # parte do fluxo de migration.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: 10s

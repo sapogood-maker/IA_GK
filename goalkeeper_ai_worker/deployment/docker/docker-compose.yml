@@ -1,0 +1,63 @@
+# Goalkeeper AI Worker - docker-compose (Deployment v1.0)
+#
+# So o Worker - Redis e a Worker API do backend NAO sao definidos aqui
+# (Boundary Enforcement: o Worker e um produto independente, nunca
+# compartilha compose file/infra com backend_fastapi/). O operador aponta
+# WORKER_REDIS_URL/WORKER_BACKEND_API_URL (arquivo .env, ao lado deste
+# arquivo) para onde quer que esses servicos ja estejam rodando - ver
+# README.md para os dois modos suportados (host.docker.internal para
+# testes rapidos no Docker Desktop, ou uma rede Docker externa
+# compartilhada para producao).
+#
+# "Deployment v1.0" e a versao deste ESQUEMA de empacotamento, distinta
+# de `worker.__version__` (versao do software, hoje 0.1.0) e de
+# WORKER_PROTOCOL_VERSION (versao do contrato REST) - mesmo principio ja
+# usado desde a Sprint W2/W27 (nunca confundir os tres).
+
+services:
+  worker:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+    image: goalkeeper-ai-worker:0.1.0
+    container_name: goalkeeper_ai_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+
+    # Necessario no Ubuntu/Docker Engine para que `host.docker.internal`
+    # funcione igual ao Docker Desktop (que ja o resolve nativamente) -
+    # e a UNICA linha deste arquivo que existe especificamente por causa
+    # da futura migracao Windows -> Ubuntu (ver DEPLOYMENT_V1_REPORT.md).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    volumes:
+      - worker_logs:/app/logs
+      - worker_weights:/app/weights
+
+    # Graceful shutdown (worker/core/lifecycle.py, Sprint W1): o loop de
+    # consumo (WorkerOrchestrator.run_forever) so verifica o sinal de
+    # encerramento ENTRE Jobs, nunca no meio de um - um Job de video longo
+    # pode legitimamente levar minutos. stop_grace_period generoso evita
+    # que o Docker mande SIGKILL antes do Job atual terminar; ajustar para
+    # cima se os videos processados forem tipicamente mais longos.
+    stop_grace_period: 120s
+
+    # Preparado para GPU NVIDIA no Ubuntu (nao tem efeito nenhum sem o
+    # NVIDIA Container Toolkit instalado no host, e sem a imagem base/
+    # pacote torch trocados para a variante CUDA - ver
+    # DEPLOYMENT_V1_REPORT.md). Descomentar so na migracao.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  worker_logs:
+    name: goalkeeper_worker_logs
+  worker_weights:
+    name: goalkeeper_worker_weights

@@ -21,8 +21,10 @@ def test_settings_defaults_apply(monkeypatch: pytest.MonkeyPatch) -> None:
     """Campos opcionais devem assumir seus valores padrao quando nao definidos."""
     monkeypatch.delenv("WORKER_ENV", raising=False)
     monkeypatch.delenv("WORKER_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("WORKER_LOG_DIR", raising=False)
     monkeypatch.delenv("WORKER_REDIS_URL", raising=False)
     monkeypatch.delenv("WORKER_CONSUMER_GROUP", raising=False)
+    monkeypatch.delenv("WORKER_STARTUP_WAIT_TIMEOUT_SECONDS", raising=False)
     monkeypatch.delenv("WORKER_LOCK_TTL_SECONDS", raising=False)
     monkeypatch.delenv("WORKER_PROTOCOL_VERSION", raising=False)
     monkeypatch.delenv("WORKER_INFERENCE_ENGINE", raising=False)
@@ -56,8 +58,10 @@ def test_settings_defaults_apply(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert settings.env == "development"
     assert settings.log_level == "INFO"
+    assert settings.log_dir == ""
     assert settings.redis_url == "redis://localhost:6379/0"
     assert settings.consumer_group == "goalkeeper_ai_worker"
+    assert settings.startup_wait_timeout_seconds == 60.0
     assert settings.lock_ttl_seconds == 300
     assert settings.protocol_version == "1.0"
     assert settings.inference_engine == "basic_vision"

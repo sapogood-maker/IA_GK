@@ -1,0 +1,43 @@
+# NOTA IMPORTANTE (Deployment v1.0): o Docker so consulta um .dockerignore
+# na RAIZ do build context - e o build context deste Dockerfile e a raiz
+# do repositorio do Worker (goalkeeper_ai_worker/, ver docker-compose.yml,
+# "build.context: ../.."), NAO este diretorio. Este arquivo existe aqui
+# como o ENTREGAVEL pedido e para ficar ao lado do Dockerfile/compose que
+# ele afeta, mas o arquivo que o Docker de fato usa e
+# `goalkeeper_ai_worker/.dockerignore` (raiz) - MANTER OS DOIS IDENTICOS.
+# Ver DEPLOYMENT_V1_REPORT.md para a explicacao completa desta duplicacao.
+
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Pesos/modelos - nunca versionados na imagem, baixados/montados via
+# volume em runtime (worker_weights).
+/weights/
+*.pt
+
+# Workspace temporario de Jobs - nunca existe de fato (WorkspaceManager
+# usa tempfile.mkdtemp do SO), mas ignorado por seguranca.
+/workspace/
+
+# Segredos e templates - NUNCA na imagem. Toda configuracao real chega
+# via env_file/variaveis de ambiente do docker-compose em runtime;
+# .env.example e so um template para uso FORA do container, tambem
+# desnecessario dentro dela.
+.env
+.env.*
+
+# Testes/documentacao - nao fazem parte do runtime da imagem (Dockerfile
+# so faz COPY de worker/, pyproject.toml e deployment/docker/entrypoint.sh
+# explicitamente). NAO ignorar deployment/ inteiro - o Dockerfile
+# precisa copiar deployment/docker/entrypoint.sh do proprio build context.
+tests/
+docs/
+*.md
+
+# Controle de versao/IDE
+.git/
+.gitignore
+.serena/
