@@ -15,11 +15,37 @@ class ApiClient {
           }
           handler.next(options);
         },
-        onResponse: (response, handler) {
-          if (response.statusCode == 401) {
-            _refreshToken();
+        // Dio so chama onResponse para respostas 2xx (validateStatus
+        // padrao) - um 401 vira DioException e passa por onError, nunca
+        // por onResponse. Sem isso aqui, o token expirado (padrao 30min,
+        // JWT_EXPIRATION_MINUTES) nunca era renovado e toda chamada
+        // seguinte falhava com 401 ate o usuario deslogar/logar de novo.
+        onError: (error, handler) async {
+          final isUnauthorized = error.response?.statusCode == 401;
+          final alreadyRetried =
+              error.requestOptions.extra['retried_after_refresh'] == true;
+
+          if (!isUnauthorized || alreadyRetried) {
+            handler.next(error);
+            return;
           }
-          handler.next(response);
+
+          final refreshed = await _refreshToken();
+          if (!refreshed) {
+            handler.next(error);
+            return;
+          }
+
+          try {
+            final retryOptions = error.requestOptions;
+            retryOptions.extra['retried_after_refresh'] = true;
+            retryOptions.headers['Authorization'] =
+                'Bearer ${_sessionService.accessToken}';
+            final response = await _dio.fetch(retryOptions);
+            handler.resolve(response);
+          } catch (_) {
+            handler.next(error);
+          }
         },
       ),
     );
