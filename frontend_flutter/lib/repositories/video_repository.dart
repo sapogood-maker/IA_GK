@@ -1,7 +1,29 @@
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../models/video.dart';
 import '../services/api_client.dart';
+
+/// Mapeia a extensao do arquivo para o Content-Type esperado pelo backend
+/// (`VideoUploadService._validate_file` exige que o MIME type comece com
+/// "video/" - ver backend_fastapi/app/services/video_upload_service.py).
+/// Sem isso, MultipartFile.fromBytes usa "application/octet-stream" por
+/// padrao, que o backend rejeita com 400 "Invalid MIME type".
+MediaType _videoContentType(String filename) {
+  final ext = filename.split('.').last.toLowerCase();
+  switch (ext) {
+    case 'mp4':
+      return MediaType('video', 'mp4');
+    case 'mov':
+      return MediaType('video', 'quicktime');
+    case 'avi':
+      return MediaType('video', 'x-msvideo');
+    case 'mkv':
+      return MediaType('video', 'x-matroska');
+    default:
+      return MediaType('video', 'mp4');
+  }
+}
 
 class VideoStatus {
   const VideoStatus({
@@ -66,7 +88,11 @@ class VideoRepository {
     void Function(int sent, int total)? onSendProgress,
   }) async {
     final formData = FormData.fromMap({
-      'file': MultipartFile.fromBytes(bytes, filename: filename),
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: filename,
+        contentType: _videoContentType(filename),
+      ),
     });
 
     final response = await _apiClient.dio.post<Map<String, dynamic>>(
