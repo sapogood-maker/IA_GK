@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/video.dart';
@@ -77,6 +78,18 @@ class VideoProvider extends ChangeNotifier {
       );
       await loadBySession(trainingSessionId);
       return true;
+    } on DioException catch (e) {
+      // Repassa o "detail" real do backend (ex.: extensao/MIME invalidos,
+      // arquivo grande demais, sessao nao encontrada - ver
+      // video_upload_service.py:_validate_file) em vez de uma mensagem
+      // generica que escondia a causa.
+      final data = e.response?.data;
+      final detail = data is Map ? data['detail'] : null;
+      _uploadError = detail is String
+          ? detail
+          : 'Não foi possível enviar o vídeo. Tente novamente.';
+      notifyListeners();
+      return false;
     } catch (_) {
       _uploadError = 'Não foi possível enviar o vídeo. Tente novamente.';
       notifyListeners();
