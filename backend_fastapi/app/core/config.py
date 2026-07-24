@@ -60,10 +60,14 @@ class Settings(BaseSettings):
 
     @property
     def allowed_video_extensions_list(self) -> list[str]:
+        # .strip('[]"\' ') tolera o erro de configuracao ja documentado
+        # acima (colar um formato de lista JSON, ex. ["mp4","mov"], em vez
+        # do CSV simples esperado) - aconteceu de novo em producao
+        # (Coolify), rejeitando TODO upload independente da extensao real.
         return [
-            ext.strip().lower()
+            cleaned
             for ext in self.allowed_video_extensions.split(",")
-            if ext.strip()
+            if (cleaned := ext.strip().strip('[]"\' ').lower())
         ]
 
     @field_validator('database_url')
