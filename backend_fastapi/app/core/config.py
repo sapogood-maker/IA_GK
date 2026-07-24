@@ -44,8 +44,15 @@ class Settings(BaseSettings):
     worker_upload_url_expiration_seconds: int = 3600
 
     # --- AI Worker: fila de processamento (Redis Streams) ---
-    # So publisher nesta sprint - nenhum consumer ainda (ver SPRINT7_REPORT.md).
-    redis_url: str = "redis://localhost:6379/0"
+    # Publisher (app/core/queue.py) - o consumer e o proprio AI Worker
+    # (goalkeeper_ai_worker/worker/infrastructure/redis/consumer.py).
+    # SEM valor padrao de proposito: um deploy (ex.: Coolify) que esqueca de
+    # definir REDIS_URL deve falhar no startup (visivel nos logs), em vez de
+    # cair silenciosamente em "redis://localhost:6379/0" - endereco que nao
+    # aponta para nada dentro do container em producao, fazendo
+    # publish_processing_job() falhar silenciosamente (ela propria absorve
+    # excecoes) e nenhum Job chegar ao Worker sem nenhum erro visivel na API.
+    redis_url: str
 
     class Config:
         env_file = ".env"
@@ -80,6 +87,13 @@ class Settings(BaseSettings):
             raise ValueError("JWT_SECRET_KEY is required")
         if len(v) < 32:
             logger.warning("JWT_SECRET_KEY is shorter than recommended (32+ characters)")
+        return v
+
+    @field_validator('redis_url')
+    @classmethod
+    def validate_redis_url(cls, v):
+        if not v:
+            raise ValueError("REDIS_URL is required")
         return v
 
 
