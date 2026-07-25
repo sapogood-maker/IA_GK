@@ -20,7 +20,13 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Goalkeeper AI API",
     description="API for futsal goalkeeper scouting and training analysis",
-    version="0.1.0"
+    version="0.1.0",
+    # Sem isso, o Swagger UI (/docs) esquece o token colado no cadeado
+    # "Authorize" a cada reload da pagina - nao e sobre o token expirar,
+    # e a pagina descartando o que foi digitado. persistAuthorization
+    # guarda no sessionStorage do navegador, sobrevive a reload (nao a
+    # fechar a aba/navegador).
+    swagger_ui_parameters={"persistAuthorization": True},
 )
 
 app.add_middleware(
