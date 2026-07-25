@@ -18,6 +18,9 @@ import json
 import sys
 
 from worker.explorers.timeline_explorer import TimelineExplorer
+from worker.segments.factory import create_strategy
+from worker.segments.play_segment import PlaySegment
+from worker.segments.segmenter import PlaySegmenter
 
 
 def _print_events(events: list[dict]) -> None:
@@ -27,6 +30,18 @@ def _print_events(events: list[dict]) -> None:
 
 def _print_json(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+def _describe_segment(segment: PlaySegment) -> str:
+    """Geracao de texto humano do PlaySegment vive aqui (CLI), nunca em
+    PlaySegment/TimelineExplorer (Sprint W30 - evita acoplar W29 a W30)."""
+    duration = segment.duration_seconds if segment.duration_seconds is not None else 0.0
+    ball_text = "presente" if segment.ball_involved else "ausente"
+    return (
+        f"Segmento {segment.segment_id[:8]} - frames {segment.start_frame}-{segment.end_frame} "
+        f"({duration:.1f}s): {len(segment.track_ids)} track(s), {len(segment.events)} eventos, "
+        f"bola {ball_text}."
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,6 +71,15 @@ def build_parser() -> argparse.ArgumentParser:
     reporting.add_argument("--stats", action="store_true", help="Estatisticas da Timeline")
     reporting.add_argument("--export", metavar="PATH", help="Grava --stats como JSON neste caminho")
     reporting.add_argument("--summary", action="store_true", help="Resumo executivo do artifact")
+
+    segmentation = parser.add_argument_group("segmentacao (Sprint W30)")
+    segmentation.add_argument(
+        "--segments", action="store_true", help="Segmenta a Timeline em jogadas (GapStrategy)"
+    )
+    segmentation.add_argument(
+        "--max-gap", type=float, default=1.0, metavar="SECONDS",
+        help="Gap maximo, em segundos, para a GapStrategy (default: 1.0)",
+    )
 
     return parser
 
@@ -103,6 +127,12 @@ def run(args: argparse.Namespace) -> int:
         ran_something = True
     if args.summary:
         _print_json(explorer.summary())
+        ran_something = True
+    if args.segments:
+        strategy = create_strategy("gap", max_gap_seconds=args.max_gap)
+        segments = PlaySegmenter(strategy).segment(explorer)
+        for segment in segments:
+            print(_describe_segment(segment))
         ran_something = True
 
     if not ran_something:

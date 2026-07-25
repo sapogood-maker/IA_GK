@@ -118,6 +118,27 @@ def test_summary_prints_json_report(artifact_path, capsys):
     assert report["frame_count"] == 3
 
 
+def test_segments_prints_one_line_per_segment(artifact_path, capsys):
+    """Sprint W30: os eventos do artifact sintetico (_consistent_artifact)
+    estao todos proximos no tempo (frames 0-2) - com o gap default (1.0s)
+    formam um unico segmento."""
+    exit_code = _run(artifact_path, "--segments")
+    assert exit_code == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) == 1
+    assert "Segmento" in lines[0]
+    assert "track(s)" in lines[0]
+
+
+def test_segments_with_small_max_gap_splits_more_segments(artifact_path, capsys):
+    """Com max_gap bem pequeno, os mesmos eventos (espacados ~0.1s) devem
+    produzir mais de um segmento."""
+    exit_code = _run(artifact_path, "--segments", "--max-gap", "0.01")
+    assert exit_code == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) > 1
+
+
 def test_main_reads_argv(monkeypatch, artifact_path, capsys):
     monkeypatch.setattr("sys.argv", ["cli.py", str(artifact_path), "--stats"])
     exit_code = main()

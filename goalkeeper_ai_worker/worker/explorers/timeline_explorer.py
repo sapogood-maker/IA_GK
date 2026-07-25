@@ -54,6 +54,12 @@ class TimelineExplorer:
             if e["timestamp_seconds"] is not None and start_seconds <= e["timestamp_seconds"] <= end_seconds
         ]
 
+    def by_frame_range(self, start_frame: int, end_frame: int) -> list[dict]:
+        """Mesma familia de by_time_range, por indice de frame - usado
+        pelo PlaySegmenter (Sprint W30) para nao precisar reimplementar
+        filtragem de eventos por intervalo."""
+        return [e for e in self.chronological() if start_frame <= e["frame_index"] <= end_frame]
+
     def by_track_id(self, track_id: int) -> list[dict]:
         return [e for e in self.chronological() if e["track_id"] == track_id]
 

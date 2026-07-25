@@ -110,6 +110,19 @@ def test_by_time_range_is_inclusive_on_both_ends():
     assert frame_indexes == {1, 2}
 
 
+def test_by_frame_range_is_inclusive_on_both_ends():
+    """Sprint W30: usado pelo PlaySegmenter para extrair os eventos de
+    cada segmento por indice de frame, mesma familia de by_time_range."""
+    explorer = TimelineExplorer(_consistent_artifact())
+    events = explorer.by_frame_range(1, 2)
+    assert {e["frame_index"] for e in events} == {1, 2}
+
+
+def test_by_frame_range_returns_empty_list_outside_range():
+    explorer = TimelineExplorer(_consistent_artifact())
+    assert explorer.by_frame_range(50, 60) == []
+
+
 def test_by_track_id_returns_only_events_of_that_track():
     explorer = TimelineExplorer(_consistent_artifact())
     events = explorer.by_track_id(1)
