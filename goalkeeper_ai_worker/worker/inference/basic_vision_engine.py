@@ -132,6 +132,15 @@ os seis resultados cognitivos já produzidos - `PlaySituationResult`/
 CONTRATO OFICIAL de saída do Worker) - mesma disciplina: mais uma chave
 de conveniência (`"goalkeeper_analysis_report"`), nenhuma mudança
 estrutural.
+
+Sprint W28 (Perception Engine, `PERCEPTION_ENGINE_ARCHITECTURE.md`):
+fundação temporal - `build_timeline()` (`worker/timeline/builder.py`) lê
+o `ProcessorContext` já preenchido (detecções/eventos de cena/resultados
+de Analyzer já são acumulados frame a frame por ele, não precisou mudar
+nada aqui além de uma chave nova) e produz uma `PerceptionTimeline` -
+log imutável, append-only, de fatos de percepção. Não substitui nenhuma
+chave existente do payload; `"event_timeline"` é só mais uma chave de
+conveniência, mesmo padrão de todas as anteriores.
 """
 from __future__ import annotations
 
@@ -146,6 +155,7 @@ from worker.inference.processors.base import ProcessorContext
 from worker.inference.processors.pipeline import PipelineProcessor
 from worker.inference.types import FrameMetadata, InferenceMetadata, InferenceResult, RegionOfInterest
 from worker.state.pipeline_state import PipelineState
+from worker.timeline.builder import build_timeline
 from worker.video.exceptions import VideoError
 from worker.video.iterator import FrameIterator
 from worker.video.provider import FrameProvider
@@ -310,6 +320,9 @@ class BasicVisionEngine(InferenceEngine):
         )
         payload["goalkeeper_coaching_result"] = latest_results_by_analyzer.get("goalkeeper_coaching")
         payload["goalkeeper_analysis_report"] = latest_results_by_analyzer.get("goalkeeper_analysis_report")
+
+        timeline = build_timeline(context, fps=properties.fps, frame_count=frames_processed)
+        payload["event_timeline"] = timeline.to_dict()
 
         artifact_path = state.workspace_dir / "artifact.json"
         artifact_path.write_text(json.dumps(payload), encoding="utf-8")

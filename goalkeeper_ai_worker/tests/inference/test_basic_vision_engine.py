@@ -1776,3 +1776,81 @@ async def test_engine_with_goalkeeper_analysis_report_analyzer_produces_a_cohere
     }
     assert saved["analysis_results"]["goalkeeper_analysis_report"] == report
     assert saved["analysis_statistics"]["analyzers_run"] == ["goalkeeper_analysis_report"]
+
+
+async def test_engine_produces_a_coherent_event_timeline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sprint W28 (Perception Engine): integracao completa com
+    Tracker/SceneAnalyzer REAIS (sem mock) - mocka so a inferencia do
+    Detector (goleiro se movendo). Prova que "event_timeline" e uma chave
+    NOVA no artefato (todas as chaves anteriores continuam existindo,
+    inalteradas) e que ela contem fatos coerentes com o que
+    detection_results/scene_events ja reportam separadamente."""
+    from worker.inference.detectors.base import Detector
+    from worker.inference.detectors.registry import register_detector
+    from worker.inference.detectors.types import BoundingBox, ClassLabel, Confidence, Detection, DetectionResult
+
+    class _MovingGoalkeeperDetectorW28(Detector):
+        name = "moving-goalkeeper-stub-w28"
+        version = "0.0.1"
+
+        def __init__(self, settings) -> None:
+            self._call_count = 0
+
+        def detect(self, frame) -> DetectionResult:
+            x = 10 + self._call_count * 2
+            self._call_count += 1
+            detection = Detection(
+                label=ClassLabel("goalkeeper"), confidence=Confidence(0.9),
+                bbox=BoundingBox(x=x, y=10, width=20, height=40),
+            )
+            return DetectionResult(detections=[detection])
+
+    register_detector("moving-goalkeeper-stub-w28", _MovingGoalkeeperDetectorW28)
+
+    monkeypatch.setenv("WORKER_DETECTOR", "moving-goalkeeper-stub-w28")
+    monkeypatch.setenv("WORKER_TRACKER", "bytetrack")
+    monkeypatch.setenv("WORKER_TRACKING_ENABLED", "true")
+    monkeypatch.setenv("WORKER_SCENE_ANALYZER", "basic")
+    monkeypatch.setenv("WORKER_SCENE_ANALYSIS_ENABLED", "true")
+    monkeypatch.setenv("WORKER_ANALYZERS", "goalkeeper_presence")
+    get_settings.cache_clear()
+
+    video = _make_video(tmp_path, frame_count=5)
+    state = _make_state(tmp_path, video)
+
+    result = await BasicVisionEngine(get_settings()).process(state)
+
+    saved = json.loads(result.artifact_path.read_text(encoding="utf-8"))
+
+    # Nenhuma chave existente foi removida/alterada por esta sprint.
+    assert saved["detection_results"] != []
+    assert saved["scene_events"] != []
+    assert saved["analysis_results"]["goalkeeper_presence"] is not None
+
+    timeline = saved["event_timeline"]
+    assert isinstance(timeline, list)
+    assert len(timeline) > 0
+
+    event_types_seen = {event["event_type"] for event in timeline}
+    assert "FrameProcessed" in event_types_seen
+    assert "ObjectDetected" in event_types_seen
+    assert "TrackStarted" in event_types_seen
+    assert "AnalyzerStarted" in event_types_seen
+    assert "AnalyzerFinished" in event_types_seen
+
+    frame_processed_count = sum(1 for e in timeline if e["event_type"] == "FrameProcessed")
+    assert frame_processed_count == 5
+
+    # Todo evento tem event_id unico e parent_event_id ausente por padrao
+    # (nenhum builder desta sprint tem uma cadeia causal alem de
+    # RuleEvaluated -> AnalyzerFinished, e goalkeeper_presence nao produz
+    # RuleEvaluated).
+    event_ids = [event["event_id"] for event in timeline]
+    assert len(event_ids) == len(set(event_ids))
+    assert all(event["parent_event_id"] is None for event in timeline)
+
+    # Ordenado por frame_index.
+    frame_indexes = [event["frame_index"] for event in timeline]
+    assert frame_indexes == sorted(frame_indexes)
