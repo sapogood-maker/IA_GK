@@ -4,7 +4,19 @@ W39) - um por chamada de `evaluate`.
 Sem estatísticas agregadas (ex.: contagem total de decisões resolvidas
 por fallback) - deliberadamente omitido, trivialmente derivável por
 qualquer consumidor iterando os dicts, mesma disciplina de todas as
-camadas anteriores."""
+camadas anteriores.
+
+Garantia de junção total (decisão arquitetural da Sprint W40):
+`track_evaluations`/`entity_evaluations` sempre compartilham
+exatamente o mesmo conjunto de chaves que
+`DecisionSet.track_decisions`/`entity_decisions` - `evaluate()` produz
+uma avaliação para cada decisão, sem filtrar nenhuma. Por isso não
+existe (nem se justifica) uma camada de "Explainability" separada:
+quem precisar explicar uma decisão (o que foi decidido, por quê, como,
+qual mecanismo resolveu o vencedor) já responde tudo isso lendo
+`DecisionSet` e `EvaluationSet` pela mesma chave `track_id`/`entity` -
+o cruzamento é sempre total e seguro, nunca há chave órfã de um lado
+sem o outro."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
