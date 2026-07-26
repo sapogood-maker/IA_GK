@@ -2,7 +2,13 @@
 UMA entidade (Sprint W37).
 
 Irmã de `TrackDecision`, não subclasse - mesma decisão de W33-W36 para
-os pares Track/Entity anteriores."""
+os pares Track/Entity anteriores.
+
+Contrato de campos (decisão arquitetural da Sprint W38): `entity`,
+`plan_type` e `winning_criteria` compõem o contrato ESTÁVEL esperado
+para consumidores externos ao núcleo. `selected_plan_id`/
+`discarded_plan_ids` são registro de AUDITORIA do processo de decisão -
+ver a nota equivalente em `track_decision.py`."""
 from __future__ import annotations
 
 from dataclasses import dataclass

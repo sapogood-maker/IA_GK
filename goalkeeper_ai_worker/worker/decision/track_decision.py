@@ -7,7 +7,15 @@ genericidade da camada, ver documento arquitetural da W37). Sem campo
 de estado próprio (`PlanState` não é reaproveitado, e não há
 `DecisionState` paralelo) - `winning_criteria` já representa,
 estruturadamente, o resultado do processo de escolha. Nunca contém
-Execution/Command/avaliação/texto livre."""
+Execution/Command/avaliação/texto livre.
+
+Contrato de campos (decisão arquitetural da Sprint W38): `track_id`,
+`plan_type` e `winning_criteria` compõem o contrato ESTÁVEL esperado
+para consumidores externos ao núcleo (adaptadores de execução).
+`selected_plan_id`/`discarded_plan_ids` são registro de AUDITORIA do
+processo de decisão - úteis para uma futura Explainability Layer, não
+destinados a acionar execução real. `DecisionSet` é o último artefato
+do núcleo cognitivo - não existe camada de tradução acima dele."""
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -5,7 +5,18 @@ Chaveado por `track_id`/`entity` diretamente (não por uma string
 `decision_id` nova) - mesma convenção de
 `WorkingState.track_states`/`entity_states`: já existe exatamente UMA
 decisão por sujeito, então o identificador natural já é o próprio
-sujeito."""
+sujeito.
+
+Contrato terminal do núcleo cognitivo (decisão arquitetural da Sprint
+W38): `DecisionSet` é o último artefato produzido pelo núcleo - nenhuma
+camada de tradução/"ExecutionIntent" existe acima dele, porque não
+acrescentaria informação nem redução de acoplamento reais (ver
+documento arquitetural da W38). Consumidores externos (adaptadores de
+execução, fora de `worker/`) devem depender só de
+`track_id`/`entity`, `plan_type` e `winning_criteria` de cada
+`TrackDecision`/`EntityDecision` - ver a nota em `track_decision.py`/
+`entity_decision.py` sobre quais campos compõem esse contrato estável
+e quais são registro interno de auditoria."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
