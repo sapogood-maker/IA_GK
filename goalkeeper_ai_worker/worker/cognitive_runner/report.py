@@ -23,7 +23,7 @@ from worker.timeline import event_types
 _SATISFYING_LEVELS = (ConvictionLevel.STABLE, ConvictionLevel.STRONG)
 
 
-def _explain_no_decision(hypotheses, conviction_set, planning_set) -> str:
+def explain_no_decision(hypotheses, conviction_set, planning_set) -> str:
     """Primeira etapa que interrompeu o fluxo do segmento, na mesma ordem
     em que os dados atravessam o Core (Hypothesis -> Conviction ->
     Planning -> Decision). `Evaluation` nunca aparece aqui: `evaluate()`
@@ -106,7 +106,7 @@ def build_cognitive_report(trace: dict) -> dict:
                 "evaluation_count": eval_count,
                 "has_decision": has_decision,
                 "no_decision_reason": (
-                    None if has_decision else _explain_no_decision(hypotheses, conviction_set, planning_set)
+                    None if has_decision else explain_no_decision(hypotheses, conviction_set, planning_set)
                 ),
             }
         )

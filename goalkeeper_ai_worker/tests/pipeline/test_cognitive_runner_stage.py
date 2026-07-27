@@ -1,8 +1,8 @@
-"""Testes de CognitiveRunnerStage (Phase 2, G2B/G2C/G2D) - mescla
-`cognitive_core_result`/`cognitive_core_metrics`/`cognitive_core_summary`
-no artifact.json ja existente, sem tocar em nenhuma outra chave, e nunca
-propaga excecao (Stage observacional - plano de integracao aprovado, Secao
-3-B)."""
+"""Testes de CognitiveRunnerStage (Phase 2/3, G2B/G2C/G2D/Cognitive Quality) -
+mescla `cognitive_core_result`/`cognitive_core_metrics`/
+`cognitive_core_summary`/`cognitive_quality` no artifact.json ja existente,
+sem tocar em nenhuma outra chave, e nunca propaga excecao (Stage
+observacional - plano de integracao aprovado, Secao 3-B)."""
 from __future__ import annotations
 
 import json
@@ -71,6 +71,23 @@ async def test_happy_path_also_adds_cognitive_core_metrics_and_summary(base_stat
     assert saved["cognitive_core_summary"]["decision_rate"] == 0.0
 
 
+async def test_happy_path_also_adds_cognitive_quality(base_state, tmp_path: Path) -> None:
+    artifact_path = tmp_path / "artifact.json"
+    _write_artifact(artifact_path, {})
+    base_state.artifact_path = artifact_path
+    base_state.event_timeline = []
+
+    await CognitiveRunnerStage().run(base_state)
+
+    saved = json.loads(artifact_path.read_text(encoding="utf-8"))
+    quality = saved["cognitive_quality"]
+    assert set(quality.keys()) == {
+        "segment_counts", "conversion_rates", "conviction_persistence", "temporal_analysis", "summary",
+    }
+    assert quality["segment_counts"]["segments_analyzed"] == 0
+    assert quality["summary"]["narrative"] == "Nenhum segmento foi analisado."
+
+
 async def test_existing_artifact_keys_are_preserved_unchanged(base_state, tmp_path: Path) -> None:
     artifact_path = tmp_path / "artifact.json"
     extra_keys = {
@@ -90,7 +107,7 @@ async def test_existing_artifact_keys_are_preserved_unchanged(base_state, tmp_pa
     for key, value in before.items():
         assert after[key] == value
     assert set(after.keys()) == set(before.keys()) | {
-        "cognitive_core_result", "cognitive_core_metrics", "cognitive_core_summary",
+        "cognitive_core_result", "cognitive_core_metrics", "cognitive_core_summary", "cognitive_quality",
     }
 
 
