@@ -1837,6 +1837,11 @@ async def test_engine_produces_a_coherent_event_timeline(
     assert "FrameProcessed" in event_types_seen
     assert "ObjectDetected" in event_types_seen
     assert "TrackStarted" in event_types_seen
+
+    # Phase 2 (G2A): o mesmo event_timeline tambem fica disponivel em
+    # memoria via state.event_timeline - evita reparse do artifact.json
+    # para quem precisar consumir a Timeline (worker/cognitive_runner/).
+    assert result.event_timeline == timeline
     assert "AnalyzerStarted" in event_types_seen
     assert "AnalyzerFinished" in event_types_seen
 

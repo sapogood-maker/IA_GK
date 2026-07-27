@@ -26,6 +26,7 @@ class PipelineState:
     download_path: Path | None = None
     artifact_path: Path | None = None
     inference_result: InferenceResult | None = None
+    event_timeline: list[dict] | None = None  # mesmo dado de payload["event_timeline"] (Phase 2, evita reparse do artifact)
     lock_acquired: bool = False
     status: str = "PROCESSING"
     finished_at: datetime | None = None

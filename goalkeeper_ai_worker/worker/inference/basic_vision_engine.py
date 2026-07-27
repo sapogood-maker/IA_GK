@@ -323,6 +323,7 @@ class BasicVisionEngine(InferenceEngine):
 
         timeline = build_timeline(context, fps=properties.fps, frame_count=frames_processed)
         payload["event_timeline"] = timeline.to_dict()
+        state.event_timeline = payload["event_timeline"]
 
         artifact_path = state.workspace_dir / "artifact.json"
         artifact_path.write_text(json.dumps(payload), encoding="utf-8")
