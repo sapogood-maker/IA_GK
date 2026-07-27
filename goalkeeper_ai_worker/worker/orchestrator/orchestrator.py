@@ -21,6 +21,7 @@ from worker.infrastructure.redis.consumer import ack_job, ensure_consumer_group,
 from worker.inference.engine import create_engine
 from worker.pipeline.stages.acquire_lock import AcquireLockStage
 from worker.pipeline.stages.cleanup import CleanupStage
+from worker.pipeline.stages.cognitive_runner import CognitiveRunnerStage
 from worker.pipeline.stages.download_video import DownloadVideoStage
 from worker.pipeline.stages.inference import InferenceStage
 from worker.pipeline.stages.prepare_workspace import PrepareWorkspaceStage
@@ -56,6 +57,7 @@ class WorkerOrchestrator:
         self._prepare_workspace = PrepareWorkspaceStage(workspace_manager)
         self._download_video = DownloadVideoStage(backend_client, transport=transport)
         self._inference = InferenceStage(create_engine(settings.inference_engine, settings))
+        self._cognitive_runner = CognitiveRunnerStage()
         self._upload_artifact = UploadArtifactStage(backend_client, transport=transport)
         self._update_status = UpdateStatusStage(backend_client, settings.instance_id)
         self._cleanup = CleanupStage(workspace_manager)
@@ -80,6 +82,7 @@ class WorkerOrchestrator:
             state = await self._prepare_workspace.run(state)
             state = await self._download_video.run(state)
             state = await self._inference.run(state)
+            state = await self._cognitive_runner.run(state)
             state = await self._upload_artifact.run(state)
             state = await self._update_status.run(state)
             state.status = "COMPLETED"
