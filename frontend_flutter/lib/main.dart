@@ -29,6 +29,7 @@ import 'repositories/video_repository.dart';
 import 'services/api_client.dart';
 import 'services/goalkeeper_service.dart';
 import 'services/session_service.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -177,7 +178,6 @@ class GkPerformanceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF28C76F);
     return MultiProvider(
       providers: [
         ChangeNotifierProvider<AuthProvider>.value(value: authProvider),
@@ -201,41 +201,7 @@ class GkPerformanceApp extends StatelessWidget {
             title: 'GK Desempenho',
             debugShowCheckedModeBanner: false,
             themeMode: ThemeMode.dark,
-            theme: ThemeData(
-              useMaterial3: true,
-              brightness: Brightness.dark,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: seed,
-                brightness: Brightness.dark,
-                surface: const Color(0xFF101512),
-              ),
-              scaffoldBackgroundColor: const Color(0xFF070A08),
-              fontFamily: 'Roboto',
-              cardTheme: CardThemeData(
-                color: const Color(0xFF111A15),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: const BorderSide(color: Color(0xFF26342B)),
-                ),
-              ),
-              inputDecorationTheme: InputDecorationTheme(
-                filled: true,
-                fillColor: const Color(0xFF101812),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF29382F)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF29382F)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: seed, width: 1.4),
-                ),
-              ),
-            ),
+            theme: buildAppTheme(),
             routerConfig: _createRouter(context.read<AuthProvider>()),
           );
         },
@@ -352,7 +318,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Text(
                           auth.errorMessage!,
                           style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: const Color(0xFFFFB4AB)),
+                              ?.copyWith(color: AppColors.error),
                         ),
                       ],
                       const SizedBox(height: 22),
@@ -416,7 +382,7 @@ class _PainelGoleirosPageState extends State<PainelGoleirosPage> {
           drawer: isDesktop
               ? null
               : Drawer(
-                  backgroundColor: const Color(0xFF0C110E),
+                  backgroundColor: AppColors.sidebar,
                   child: _MenuLateral(
                     itens: _itensMenu,
                     selecionado: indiceSelecionado,
@@ -587,7 +553,7 @@ class _TituloPainel extends StatelessWidget {
                 'Análise de desempenho para goleiros de alto rendimento',
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: const Color(0xFF9CAEA2),
+                  color: AppColors.textSecondary,
                 ),
               ),
             ],
@@ -614,12 +580,113 @@ class _AcoesCabecalho extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        FilledButton.icon(
+        _BotaoGradiente(
+          icon: Icons.cloud_upload_outlined,
+          label: 'Enviar Vídeo',
           onPressed: () {},
-          icon: const Icon(Icons.cloud_upload_outlined),
-          label: const Text('Enviar Vídeo'),
         ),
       ],
+    );
+  }
+}
+
+/// Botão principal da aplicação ("Enviar Vídeo") - único elemento com
+/// gradiente roxo do Design System v2, para se destacar como a chamada
+/// visual mais importante da tela (Sprint UX-01). Nunca usado para ações
+/// secundárias, mantendo o roxo como cor de destaque, não de preenchimento.
+class _BotaoGradiente extends StatefulWidget {
+  const _BotaoGradiente({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  State<_BotaoGradiente> createState() => _BotaoGradienteState();
+}
+
+class _BotaoGradienteState extends State<_BotaoGradiente> {
+  bool _hovering = false;
+  bool _pressing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = widget.onPressed == null;
+    return MouseRegion(
+      cursor: disabled
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressing = true),
+        onTapUp: (_) => setState(() => _pressing = false),
+        onTapCancel: () => setState(() => _pressing = false),
+        child: AnimatedScale(
+          scale: _pressing && !disabled
+              ? 0.97
+              : _hovering && !disabled
+              ? 1.02
+              : 1.0,
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          child: AnimatedOpacity(
+            opacity: disabled ? 0.5 : 1.0,
+            duration: const Duration(milliseconds: 180),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              decoration: BoxDecoration(
+                gradient: AppGradients.primaryButton,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+                boxShadow: _hovering && !disabled
+                    ? [
+                        BoxShadow(
+                          color: AppColors.primary.withValues(alpha: 0.35),
+                          blurRadius: 18,
+                          offset: const Offset(0, 6),
+                        ),
+                      ]
+                    : const [],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                  onTap: widget.onPressed,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          widget.icon,
+                          color: AppColors.textPrimary,
+                          size: 19,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          widget.label,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -731,14 +798,14 @@ class _MenuLateral extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 288,
+      width: 280,
       decoration: const BoxDecoration(
-        color: Color(0xFF0C110E),
-        border: Border(right: BorderSide(color: Color(0xFF233128))),
+        color: AppColors.sidebar,
+        border: Border(right: BorderSide(color: AppColors.border)),
       ),
       child: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -779,13 +846,17 @@ class _Marca extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 44,
-          height: 44,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
-            color: const Color(0xFF28C76F),
-            borderRadius: BorderRadius.circular(8),
+            color: AppColors.primary,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
-          child: const Icon(Icons.sports_soccer, color: Color(0xFF061008)),
+          child: const Icon(
+            Icons.sports_soccer,
+            color: AppColors.textPrimary,
+            size: 20,
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -796,16 +867,17 @@ class _Marca extends StatelessWidget {
                 'GK Desempenho',
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.1,
+                  color: AppColors.textPrimary,
                 ),
               ),
               Text(
                 'Análise de goleiros',
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF8FA196)),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
             ],
           ),
@@ -829,21 +901,37 @@ class _BotaoMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: ativo ? const Color(0xFF153823) : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        hoverColor: AppColors.hover,
+        splashColor: AppColors.primary.withValues(alpha: 0.12),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            color: ativo ? AppColors.primary.withValues(alpha: 0.12) : null,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
           child: Row(
             children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 3,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: ativo ? AppColors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 11),
               Icon(
                 item.icone,
-                size: 21,
-                color: ativo
-                    ? const Color(0xFF55E08F)
-                    : const Color(0xFF9BAAA1),
+                size: 19,
+                color: ativo ? AppColors.textPrimary : AppColors.textSecondary,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -851,9 +939,9 @@ class _BotaoMenu extends StatelessWidget {
                   item.titulo,
                   style: TextStyle(
                     color: ativo
-                        ? const Color(0xFFEAF7EF)
-                        : const Color(0xFFB7C5BC),
-                    fontWeight: ativo ? FontWeight.w700 : FontWeight.w500,
+                        ? AppColors.textPrimary
+                        : AppColors.textSecondary,
+                    fontWeight: ativo ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
               ),
@@ -880,39 +968,92 @@ class _StatusProcessamento extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.memory_outlined, color: Color(0xFF55E08F)),
-                const SizedBox(width: 8),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: AppColors.hover,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
+                  ),
+                  child: const Icon(
+                    Icons.memory_outlined,
+                    color: AppColors.textSecondary,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
-                    'IA em operação',
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Goalkeeper AI',
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        'Cognitive Platform v1.0',
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: AppColors.success,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Pronta para análise',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: AppColors.success,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
             LinearProgressIndicator(
               value: totalEmProcessamento == null
                   ? null
                   : totalEmProcessamento > 0
                   ? 0.68
                   : 0,
+              color: AppColors.primary,
+              backgroundColor: AppColors.hover,
             ),
             const SizedBox(height: 8),
             Text(
               texto,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
             ),
           ],
         ),
@@ -940,7 +1081,7 @@ class _SessaoUsuario extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
             ),
           ),
         OutlinedButton.icon(
@@ -967,7 +1108,7 @@ class _CardIndicador extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -977,20 +1118,20 @@ class _CardIndicador extends StatelessWidget {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF183B25),
-                    borderRadius: BorderRadius.circular(8),
+                    color: AppColors.hover,
+                    borderRadius: BorderRadius.circular(AppRadius.sm),
                   ),
                   child: Icon(
                     indicador.icone,
-                    color: const Color(0xFF55E08F),
-                    size: 22,
+                    color: AppColors.textSecondary,
+                    size: 20,
                   ),
                 ),
                 const Spacer(),
                 const Icon(
                   Icons.trending_up,
-                  color: Color(0xFF55E08F),
-                  size: 20,
+                  color: AppColors.success,
+                  size: 18,
                 ),
               ],
             ),
@@ -1003,14 +1144,19 @@ class _CardIndicador extends StatelessWidget {
                   (indicador.valor.length > 8
                           ? Theme.of(context).textTheme.titleMedium
                           : Theme.of(context).textTheme.headlineMedium)
-                      ?.copyWith(fontWeight: FontWeight.w900, letterSpacing: 0),
+                      ?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                        color: AppColors.textPrimary,
+                      ),
             ),
             const SizedBox(height: 4),
             Text(
               indicador.titulo,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: 2),
             Text(
@@ -1018,7 +1164,7 @@ class _CardIndicador extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
             ),
           ],
         ),
@@ -1082,10 +1228,10 @@ class _LinhaAnalise extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFF16251B),
-            borderRadius: BorderRadius.circular(8),
+            color: AppColors.hover,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
-          child: const Icon(Icons.sports_soccer, color: Color(0xFF55E08F)),
+          child: const Icon(Icons.sports_soccer, color: AppColors.textSecondary),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -1104,7 +1250,7 @@ class _LinhaAnalise extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -1182,7 +1328,7 @@ class _SessoesRecentes extends StatelessWidget {
                     children: [
                       const Icon(
                         Icons.event_available_outlined,
-                        color: Color(0xFF55E08F),
+                        color: AppColors.textSecondary,
                       ),
                       const SizedBox(width: 10),
                       Expanded(child: Text(sessao)),
@@ -1220,10 +1366,10 @@ class _EnvioRapido extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          FilledButton.icon(
+          _BotaoGradiente(
+            icon: Icons.cloud_upload_outlined,
+            label: 'Enviar Vídeo',
             onPressed: () {},
-            icon: const Icon(Icons.cloud_upload_outlined),
-            label: const Text('Enviar Vídeo'),
           ),
         ],
       ),
@@ -1325,10 +1471,10 @@ class _LinhaClube extends StatelessWidget {
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: const Color(0xFF16251B),
-            borderRadius: BorderRadius.circular(8),
+            color: AppColors.hover,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
-          child: const Icon(Icons.shield_outlined, color: Color(0xFF55E08F)),
+          child: const Icon(Icons.shield_outlined, color: AppColors.textSecondary),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -1349,7 +1495,7 @@ class _LinhaClube extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -1441,7 +1587,7 @@ class _DialogNovoClubeState extends State<_DialogNovoClube> {
               ),
               if (_erro != null) ...[
                 const SizedBox(height: 14),
-                Text(_erro!, style: const TextStyle(color: Color(0xFFFFB4AB))),
+                Text(_erro!, style: const TextStyle(color: AppColors.error)),
               ],
             ],
           ),
@@ -1581,12 +1727,12 @@ class _LinhaGoleiro extends StatelessWidget {
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: const Color(0xFF16251B),
-            borderRadius: BorderRadius.circular(8),
+            color: AppColors.hover,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
           child: const Icon(
             Icons.sports_handball_outlined,
-            color: Color(0xFF55E08F),
+            color: AppColors.textSecondary,
           ),
         ),
         const SizedBox(width: 14),
@@ -1606,7 +1752,7 @@ class _LinhaGoleiro extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -1762,7 +1908,7 @@ class _DialogNovoGoleiroState extends State<_DialogNovoGoleiro> {
               ),
               if (_erro != null) ...[
                 const SizedBox(height: 14),
-                Text(_erro!, style: const TextStyle(color: Color(0xFFFFB4AB))),
+                Text(_erro!, style: const TextStyle(color: AppColors.error)),
               ],
             ],
           ),
@@ -2070,18 +2216,16 @@ class _VideosScreenState extends State<VideosScreen> {
                           ],
                         ),
                         const SizedBox(height: 14),
-                        FilledButton.icon(
+                        _BotaoGradiente(
+                          icon: Icons.cloud_upload_outlined,
+                          label: videoProvider.isUploading
+                              ? 'Enviando...'
+                              : 'Enviar Vídeo',
                           onPressed:
                               (_arquivoSelecionado == null ||
                                   videoProvider.isUploading)
                               ? null
                               : _enviarVideo,
-                          icon: const Icon(Icons.cloud_upload_outlined),
-                          label: Text(
-                            videoProvider.isUploading
-                                ? 'Enviando...'
-                                : 'Enviar Vídeo',
-                          ),
                         ),
                         if (videoProvider.isUploading) ...[
                           const SizedBox(height: 14),
@@ -2092,7 +2236,7 @@ class _VideosScreenState extends State<VideosScreen> {
                           Text(
                             '${(videoProvider.uploadProgress * 100).toStringAsFixed(0)}%',
                             style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: const Color(0xFF9CAEA2)),
+                                ?.copyWith(color: AppColors.textSecondary),
                           ),
                         ],
                       ],
@@ -2184,12 +2328,12 @@ class _LinhaVideo extends StatelessWidget {
           width: 48,
           height: 48,
           decoration: BoxDecoration(
-            color: const Color(0xFF16251B),
-            borderRadius: BorderRadius.circular(8),
+            color: AppColors.hover,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
           child: const Icon(
             Icons.videocam_outlined,
-            color: Color(0xFF55E08F),
+            color: AppColors.textSecondary,
           ),
         ),
         const SizedBox(width: 14),
@@ -2209,7 +2353,7 @@ class _LinhaVideo extends StatelessWidget {
                 tamanhoMb ?? 'Tamanho não informado',
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -2375,12 +2519,12 @@ class _LinhaSessao extends StatelessWidget {
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: const Color(0xFF16251B),
-            borderRadius: BorderRadius.circular(8),
+            color: AppColors.hover,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
           child: const Icon(
             Icons.event_note_outlined,
-            color: Color(0xFF55E08F),
+            color: AppColors.textSecondary,
           ),
         ),
         const SizedBox(width: 14),
@@ -2400,7 +2544,7 @@ class _LinhaSessao extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -2570,7 +2714,7 @@ class _DialogNovaSessaoState extends State<_DialogNovaSessao> {
               ),
               if (_erro != null) ...[
                 const SizedBox(height: 14),
-                Text(_erro!, style: const TextStyle(color: Color(0xFFFFB4AB))),
+                Text(_erro!, style: const TextStyle(color: AppColors.error)),
               ],
             ],
           ),
@@ -2766,10 +2910,10 @@ class _LinhaUsuario extends StatelessWidget {
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: const Color(0xFF16251B),
-            borderRadius: BorderRadius.circular(8),
+            color: AppColors.hover,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
-          child: const Icon(Icons.person_outline, color: Color(0xFF55E08F)),
+          child: const Icon(Icons.person_outline, color: AppColors.textSecondary),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -2788,7 +2932,7 @@ class _LinhaUsuario extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -2990,7 +3134,7 @@ class _LinhaPerfil extends StatelessWidget {
             rotulo,
             style: Theme.of(
               context,
-            ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+            ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
           ),
         ),
         Expanded(
@@ -3028,7 +3172,7 @@ class _LinhaPermissao extends StatelessWidget {
           descricao,
           style: Theme.of(
             context,
-          ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+          ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
         ),
       ],
     );
@@ -3118,10 +3262,10 @@ class _CabecalhoSecao extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: const Color(0xFF183B25),
-                borderRadius: BorderRadius.circular(8),
+                color: AppColors.hover,
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
-              child: Icon(icone, color: const Color(0xFF55E08F)),
+              child: Icon(icone, color: AppColors.textSecondary),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -3140,7 +3284,7 @@ class _CabecalhoSecao extends StatelessWidget {
                     subtitulo,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF9CAEA2),
+                      color: AppColors.textSecondary,
                     ),
                   ),
                 ],
@@ -3238,7 +3382,7 @@ class _CardMetricaSecao extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: Theme.of(
                 context,
-              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+              ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
             ),
           ],
         ),
@@ -3261,10 +3405,10 @@ class _LinhaSecao extends StatelessWidget {
           width: 46,
           height: 46,
           decoration: BoxDecoration(
-            color: const Color(0xFF16251B),
-            borderRadius: BorderRadius.circular(8),
+            color: AppColors.hover,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
           ),
-          child: Icon(icone, color: const Color(0xFF55E08F)),
+          child: Icon(icone, color: AppColors.textSecondary),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -3283,7 +3427,7 @@ class _LinhaSecao extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(
                   context,
-                ).textTheme.bodySmall?.copyWith(color: const Color(0xFF9CAEA2)),
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -3310,7 +3454,7 @@ class _Bloco extends StatelessWidget {
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -3320,15 +3464,16 @@ class _Bloco extends StatelessWidget {
                   child: Text(
                     titulo,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
+                      color: AppColors.textPrimary,
                     ),
                   ),
                 ),
                 ?acao,
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             child,
           ],
         ),
@@ -3346,14 +3491,14 @@ class _MensagemSemDados extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.info_outline, color: Color(0xFF9CAEA2)),
+        const Icon(Icons.info_outline, color: AppColors.textSecondary),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             texto,
             style: Theme.of(
               context,
-            ).textTheme.bodyMedium?.copyWith(color: const Color(0xFF9CAEA2)),
+            ).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
           ),
         ),
       ],
@@ -3361,26 +3506,95 @@ class _MensagemSemDados extends StatelessWidget {
   }
 }
 
+/// Chip de status (Sprint UX-01, Design System v2). Reconhece por
+/// palavra-chave (case-insensitive) o status de processamento real
+/// (Queued/Running/Completed/Failed) e escolhe a cor correspondente; textos
+/// não reconhecidos (ex.: papel de usuário, que reutiliza este mesmo
+/// widget) recebem um chip neutro - nunca mais sempre verde independente do
+/// conteúdo.
 class _Etiqueta extends StatelessWidget {
   const _Etiqueta({required this.texto});
 
   final String texto;
 
+  static const _palavrasFila = [
+    'fila',
+    'queued',
+    'pendente',
+  ];
+  static const _palavrasEmAndamento = [
+    'processando',
+    'processamento',
+    'baixando',
+    'pré-processando',
+    'pre-processando',
+    'pós-processando',
+    'pos-processando',
+    'gerando',
+    'enviando',
+    'running',
+    'downloading',
+    'preprocessing',
+    'inference',
+    'postprocessing',
+    'uploading',
+  ];
+  static const _palavrasConcluido = [
+    'conclu',
+    'completed',
+    'sucesso',
+    'confirmado',
+  ];
+  static const _palavrasFalha = [
+    'falha',
+    'failed',
+    'erro',
+    'cancelado',
+    'cancelled',
+  ];
+
+  Color? get _corStatus {
+    final normalizado = texto.toLowerCase();
+    if (_palavrasFila.any(normalizado.contains)) return AppColors.statusQueued;
+    if (_palavrasEmAndamento.any(normalizado.contains)) {
+      return AppColors.warning;
+    }
+    if (_palavrasConcluido.any(normalizado.contains)) return AppColors.success;
+    if (_palavrasFalha.any(normalizado.contains)) return AppColors.error;
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final cor = _corStatus;
+    final corTexto = cor ?? AppColors.neutralChipText;
+    final corFundo = cor?.withValues(alpha: 0.14) ?? AppColors.neutralChipBackground;
+    final corBorda = cor?.withValues(alpha: 0.4) ?? AppColors.neutralChipBorder;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF173823),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF2F6E45)),
+        color: corFundo,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(color: corBorda),
       ),
-      child: Text(
-        texto,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: const Color(0xFFB9F6CA),
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: corTexto, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            texto,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: corTexto,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
